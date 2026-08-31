@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mermaid Hotpaths — playground</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --border: #2a2f3a;
+        --text: #e6e9ef;
+        --muted: #9aa3b2;
+        --accent: #6ea8fe;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+      header {
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      header h1 {
+        font-size: 16px;
+        margin: 0;
+        font-weight: 650;
+      }
+      header .legend {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      header .legend kbd {
+        background: #222734;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 6px;
+        font-size: 12px;
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(320px, 420px) 1fr;
+        gap: 0;
+        height: calc(100% - 56px);
+      }
+      .left {
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--border);
+        min-width: 0;
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap;
+      }
+      select,
+      button {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 7px 12px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--accent);
+        color: #0b1020;
+        border-color: var(--accent);
+        font-weight: 600;
+      }
+      textarea {
+        flex: 1;
+        resize: none;
+        background: #0c0e13;
+        color: var(--text);
+        border: 0;
+        padding: 14px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        outline: none;
+      }
+      .stage {
+        position: relative;
+        overflow: hidden;
+      }
+      .viewport {
+        position: absolute;
+        inset: 0;
+        user-select: none;
+      }
+      .viewport.space-pan {
+        cursor: grab;
+      }
+      .viewport.panning {
+        cursor: grabbing;
+      }
+      #diagram svg {
+        display: block;
+      }
+      .error {
+        position: absolute;
+        top: 24px;
+        left: 24px;
+        color: #ff8585;
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 12px;
+        padding: 8px 12px;
+        border-top: 1px solid var(--border);
+      }
+      .zoom-controls {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        display: flex;
+        gap: 4px;
+        z-index: 2;
+      }
+      .zoom-controls button {
+        padding: 6px 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Mermaid Hotpaths</h1>
+      <span class="legend">
+        <strong>hover</strong> num nó-fonte = preview · <strong>click</strong> = fixa (pin) ·
+        <kbd>Esc</kbd> / click no vazio = limpa
+      </span>
+    </header>
+    <main>
+      <div class="left">
+        <div class="controls">
+          <select id="examples" title="Exemplos"></select>
+          <button class="primary" id="render">
+            Render ▸ <span style="opacity: 0.7">Ctrl+Enter</span>
+          </button>
+        </div>
+        <textarea id="src" spellcheck="false"></textarea>
+        <div class="hint">
+          Cole qualquer chart mermaid. Um nó declara trigger com
+          <code>@{ trigger: nome, color: "#hex" }</code> (ou vários:
+          <code>@{ triggers: ["a:#hex", "b:#hex"] }</code>) e outros escutam com
+          <code>@{ listen: [nome, ...] }</code>. Arestas entre membros acendem sozinhas.
+        </div>
+      </div>
+      <div class="stage">
+        <div class="viewport" id="viewport">
+          <div id="diagram"></div>
+        </div>
+        <div class="error" id="error" hidden></div>
+        <div class="zoom-controls">
+          <button id="zoom-out" title="Zoom out">−</button>
+          <button id="zoom-fit" title="Fit to view">⤢</button>
+          <button id="zoom-in" title="Zoom in">+</button>
+        </div>
+      </div>
+    </main>
+
+    <script type="module">
+      import mermaid from './mermaid.esm.mjs';
+      import { attachPanZoom } from './panzoom.js';
+
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'loose',
+        theme: 'dark',
+        flowchart: { curve: 'basis' },
+      });
+
+      const EXAMPLES = {
+        'Trigger único + listeners': `flowchart TD
+  A@{ trigger: after-call, color: "#e53935" }
+  B@{ listen: [after-call] }
+  C@{ listen: [after-call] }
+  D[outro nó qualquer]
+  A --> B --> C
+  A --> D`,
+
+        'Dois triggers no mesmo nó-fonte (glow duplo)': `flowchart LR
+  S@{ triggers: ["success:#43a047", "retry:#1e88e5"] }
+  P@{ listen: [success] }
+  Q@{ listen: [retry] }
+  Z@{ listen: [success, retry] }
+  S --> P --> Z
+  S --> Q --> Z
+  Z --> END[done]`,
+
+        'Vários triggers independentes': `flowchart TD
+  Login@{ trigger: auth, color: "#8e24aa" }
+  Cron@{ trigger: job, color: "#fb8c00" }
+  Token@{ listen: [auth] }
+  Session@{ listen: [auth] }
+  Queue@{ listen: [job] }
+  Worker@{ listen: [job, auth] }
+  Login --> Token --> Session --> Worker
+  Cron --> Queue --> Worker`,
+
+        'Chart normal (sem feature)': `flowchart LR
+  A[Start] --> B{Choice}
+  B -->|yes| C[Do it]
+  B -->|no| D[Skip]
+  C --> E[End]
+  D --> E`,
+      };
+
+      const srcEl = document.getElementById('src');
+      const viewportEl = document.getElementById('viewport');
+      const diagramEl = document.getElementById('diagram');
+      const errorEl = document.getElementById('error');
+      const selectEl = document.getElementById('examples');
+
+      const panzoom = attachPanZoom(viewportEl, diagramEl);
+      document.getElementById('zoom-in').addEventListener('click', panzoom.zoomIn);
+      document.getElementById('zoom-out').addEventListener('click', panzoom.zoomOut);
+      document.getElementById('zoom-fit').addEventListener('click', panzoom.fit);
+
+      for (const name of Object.keys(EXAMPLES)) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        selectEl.appendChild(opt);
+      }
+
+      let renderSeq = 0;
+      async function render({ refit = false } = {}) {
+        const code = srcEl.value;
+        const id = `hp-${++renderSeq}`;
+        try {
+          const { svg, bindFunctions } = await mermaid.render(id, code);
+          diagramEl.innerHTML = svg;
+          // Re-attach interactivity (hover/click hotpaths) after inserting the SVG string.
+          bindFunctions?.(diagramEl);
+          errorEl.hidden = true;
+          if (refit) {
+            panzoom.fit();
+          }
+        } catch (e) {
+          errorEl.textContent = String(e?.message ?? e);
+          errorEl.hidden = false;
+        }
+      }
+
+      let debounceID;
+      function scheduleRender() {
+        clearTimeout(debounceID);
+        debounceID = setTimeout(() => render(), 400);
+      }
+
+      selectEl.addEventListener('change', () => {
+        srcEl.value = EXAMPLES[selectEl.value];
+        clearTimeout(debounceID);
+        render({ refit: true });
+      });
+      document.getElementById('render').addEventListener('click', () => {
+        clearTimeout(debounceID);
+        render({ refit: true });
+      });
+      srcEl.addEventListener('input', scheduleRender);
+      srcEl.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          clearTimeout(debounceID);
+          render({ refit: true });
+        }
+      });
+
+      // boot
+      selectEl.value = Object.keys(EXAMPLES)[0];
+      srcEl.value = EXAMPLES[selectEl.value];
+      render({ refit: true });
+    </script>
+  </body>
+</html>

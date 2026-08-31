@@ -1,0 +1,2800 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mermaid Editor</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --border: #2a2f3a;
+        --text: #e6e9ef;
+        --muted: #9aa3b2;
+        --accent: #6ea8fe;
+        --danger: #ff8585;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+      header {
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      header a.back {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 13px;
+      }
+      header a.back:hover {
+        color: var(--accent);
+      }
+      header input#name {
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--text);
+        font-size: 15px;
+        font-weight: 650;
+        padding: 4px 6px;
+        border-radius: 6px;
+        min-width: 120px;
+      }
+      header input#name:hover,
+      header input#name:focus {
+        border-color: var(--border);
+        outline: none;
+      }
+      header nav {
+        display: flex;
+        gap: 14px;
+        margin-left: auto;
+        font-size: 13px;
+      }
+      header nav button {
+        background: transparent;
+        border: none;
+        padding: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      header nav button:hover {
+        color: var(--accent);
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(320px, 420px) 1fr;
+        gap: 0;
+        height: calc(100% - 53px);
+      }
+      main.notes-open {
+        grid-template-columns: minmax(320px, 420px) 1fr minmax(280px, 380px);
+      }
+      .left {
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--border);
+        min-width: 0;
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap;
+      }
+      select,
+      button {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 7px 12px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--accent);
+        color: #0b1020;
+        border-color: var(--accent);
+        font-weight: 600;
+      }
+      .status {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .status.error {
+        color: var(--danger);
+      }
+      .shape-menu {
+        position: relative;
+      }
+      .shape-popover[hidden] {
+        display: none;
+      }
+      .shape-popover {
+        position: absolute;
+        top: 0;
+        left: calc(100% + 6px);
+        z-index: 5;
+        width: 264px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+      }
+      .shape-popover button {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 4px 6px;
+        font-size: 10px;
+        line-height: 1.2;
+        text-align: center;
+        white-space: normal;
+      }
+      .shape-popover svg {
+        width: 24px;
+        height: 24px;
+      }
+      .shape-popover button.active,
+      .arrow-popover button.active {
+        border-color: var(--accent);
+        background: #1c2433;
+      }
+      .arrow-popover[hidden] {
+        display: none;
+      }
+      .arrow-popover {
+        position: fixed;
+        z-index: 6;
+        width: 224px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .arrow-popover-label {
+        font-size: 10px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin: 2px 0 -2px;
+      }
+      .arrow-popover-row {
+        display: flex;
+        gap: 4px;
+      }
+      .arrow-popover-row button {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 2px;
+        font-size: 10px;
+      }
+      .arrow-popover svg {
+        flex: none;
+        width: 26px;
+        height: 16px;
+      }
+      .element-toolbar[hidden] {
+        display: none;
+      }
+      .element-toolbar {
+        position: fixed;
+        z-index: 6;
+        display: flex;
+        gap: 2px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 4px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      }
+      .element-toolbar button {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .element-toolbar button[hidden] {
+        display: none;
+      }
+      .element-toolbar svg {
+        width: 18px;
+        height: 18px;
+      }
+      .inline-label-editor[hidden] {
+        display: none;
+      }
+      .inline-label-editor {
+        position: fixed;
+        z-index: 7;
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--accent);
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-family: inherit;
+        font-size: 13px;
+        text-align: center;
+        outline: none;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      }
+      .modal-backdrop[hidden] {
+        display: none;
+      }
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+      }
+      .modal {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 20px;
+        width: 300px;
+      }
+      .modal h2 {
+        font-size: 15px;
+        margin: 0 0 12px;
+      }
+      .modal label {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .modal input {
+        width: 100%;
+        background: #0c0e13;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-size: 13px;
+        outline: none;
+      }
+      .modal input:focus {
+        border-color: var(--accent);
+      }
+      .modal-error {
+        color: var(--danger);
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      textarea {
+        flex: 1;
+        resize: none;
+        background: #0c0e13;
+        color: var(--text);
+        border: 0;
+        padding: 14px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        outline: none;
+      }
+      /*
+       * Syntax-highlighted code panel: #src stays a fully functional textarea, just
+       * painted transparent on top of a highlighted <pre> backdrop that mirrors its
+       * exact font/padding/wrapping — so caret, selection, and native undo all keep
+       * working untouched (see highlight.js).
+       */
+      .code-wrap {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+        background: #0c0e13;
+      }
+      .code-backdrop,
+      #src {
+        position: absolute;
+        inset: 0;
+        margin: 0;
+        padding: 14px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
+        overflow: auto;
+      }
+      .code-backdrop {
+        color: var(--text);
+        pointer-events: none;
+      }
+      .code-backdrop code {
+        font: inherit;
+      }
+      #src {
+        flex: none;
+        resize: none;
+        background: transparent;
+        color: transparent;
+        caret-color: var(--text);
+        border: 0;
+        outline: none;
+      }
+      .tok-comment {
+        color: var(--muted);
+        font-style: italic;
+      }
+      .tok-string,
+      .tok-label {
+        color: #7ee787;
+      }
+      .tok-arrow {
+        color: #e3b341;
+      }
+      .tok-keyword {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      #hotpaths-toggle.active {
+        border-color: var(--accent);
+        background: #1c2433;
+        color: var(--accent);
+      }
+      .notes-panel[hidden] {
+        display: none;
+      }
+      .notes-panel {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        border-left: 1px solid var(--border);
+      }
+      .notes-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+        font-weight: 650;
+      }
+      .notes-panel-header button {
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1;
+        padding: 4px 6px;
+      }
+      .notes-panel-header button:hover {
+        color: var(--text);
+      }
+      .notes-view {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        padding: 14px;
+        gap: 10px;
+        overflow: auto;
+      }
+      .notes-empty {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .notes-detail-header {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .notes-textarea {
+        flex: 1;
+        resize: none;
+        background: #0c0e13;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        font-family: inherit;
+        font-size: 16px;
+        line-height: 1.5;
+        outline: none;
+      }
+      .notes-textarea:focus {
+        border-color: var(--accent);
+      }
+      .notes-detail-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .notes-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .notes-list-item {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        text-align: left;
+        padding: 8px 10px;
+        border-radius: 6px;
+      }
+      .notes-list-kind {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+      .notes-list-id {
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .notes-list-snippet {
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+      }
+      #diagram svg .note-badge {
+        pointer-events: none;
+      }
+      .stage {
+        position: relative;
+        overflow: hidden;
+      }
+      .viewport {
+        position: absolute;
+        inset: 0;
+        user-select: none;
+      }
+      .viewport.space-pan {
+        cursor: grab;
+      }
+      .viewport.panning {
+        cursor: grabbing;
+      }
+      #diagram svg {
+        display: block;
+        /* Mermaid sizes the svg tightly to the diagram's own content (its viewBox),
+           and an svg clips to that box by default — our selection overlay (the "+"
+           button sits below the lowest node) can fall just outside it. The actual
+           screen/window edge is still enforced by .viewport's overflow: hidden. */
+        overflow: visible;
+      }
+      #diagram svg g.node,
+      #diagram svg g.cluster,
+      #diagram svg .edge-hit-area {
+        cursor: pointer;
+      }
+      #diagram svg g.node.drop-candidate,
+      #diagram svg g.cluster.drop-candidate {
+        filter: drop-shadow(0 0 4px var(--accent)) drop-shadow(0 0 8px var(--accent));
+      }
+      .error {
+        position: absolute;
+        top: 24px;
+        left: 24px;
+        color: var(--danger);
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+      }
+      .zoom-controls {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        display: flex;
+        gap: 4px;
+        z-index: 2;
+      }
+      .zoom-controls button {
+        padding: 6px 10px;
+      }
+      .canvas-toolbar {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        z-index: 2;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 4px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      }
+      .canvas-toolbar button {
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .canvas-toolbar svg {
+        width: 20px;
+        height: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="back" href="./index.html">← Projects</a>
+      <input id="name" spellcheck="false" />
+      <nav>
+        <button id="notes-panel-open">Notas</button>
+      </nav>
+    </header>
+    <main>
+      <div class="left">
+        <div class="controls">
+          <select id="layout" title="Layout engine">
+            <option value="dagre">Layout: Dagre</option>
+            <option value="elk">Layout: ELK</option>
+          </select>
+          <button
+            id="hotpaths-toggle"
+            type="button"
+            title="Liga/desliga o hover e clique dos hotpaths"
+          >
+            Hotpaths: On
+          </button>
+          <span class="status" id="status"></span>
+        </div>
+        <div class="code-wrap">
+          <pre class="code-backdrop" aria-hidden="true"><code id="code-highlight"></code></pre>
+          <textarea id="src" spellcheck="false"></textarea>
+        </div>
+      </div>
+      <div class="stage">
+        <div class="viewport" id="viewport">
+          <div id="diagram"></div>
+        </div>
+        <div class="error" id="error" hidden></div>
+        <div class="canvas-toolbar">
+          <div class="shape-menu">
+            <button id="shapes-btn" title="Shapes" aria-haspopup="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                <rect x="3" y="11" width="10" height="10" />
+                <circle cx="16.5" cy="7.5" r="4.5" />
+              </svg>
+            </button>
+            <div class="shape-popover" id="shape-popover" hidden></div>
+          </div>
+          <button id="subgraph-btn" title="Subgraph">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <rect x="3" y="4" width="18" height="16" rx="2" stroke-dasharray="3 2" />
+              <rect x="7" y="9" width="10" height="7" rx="1" />
+            </svg>
+          </button>
+        </div>
+        <div class="zoom-controls">
+          <button id="zoom-out" title="Zoom out">−</button>
+          <button id="zoom-fit" title="Fit to view">⤢</button>
+          <button id="zoom-in" title="Zoom in">+</button>
+        </div>
+        <div class="element-toolbar" id="element-toolbar" hidden>
+          <button id="et-shape-btn" title="Change shape">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <rect x="3" y="11" width="10" height="10" />
+              <circle cx="16.5" cy="7.5" r="4.5" />
+            </svg>
+          </button>
+          <button id="et-arrow-btn" title="Change arrow type" hidden>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="3" y1="12" x2="17" y2="12" />
+              <path d="M13 7 L19 12 L13 17" />
+            </svg>
+          </button>
+          <button id="et-code-btn" title="View in code">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polyline points="9 6 3 12 9 18" />
+              <polyline points="15 6 21 12 15 18" />
+            </svg>
+          </button>
+          <button id="et-note-btn" title="Add note">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M5 3.5h11l3 3V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
+              <path d="M16 3.5V7h3.3" />
+              <line x1="7.5" y1="10.5" x2="15" y2="10.5" />
+              <line x1="7.5" y1="14" x2="15" y2="14" />
+            </svg>
+          </button>
+        </div>
+        <div class="arrow-popover" id="arrow-popover" hidden>
+          <div class="arrow-popover-label">Style</div>
+          <div class="arrow-popover-row" id="arrow-style-row"></div>
+          <div class="arrow-popover-label">Arrowhead</div>
+          <div class="arrow-popover-row" id="arrow-head-row"></div>
+          <div class="arrow-popover-label" id="arrow-direction-label">Direction</div>
+          <div class="arrow-popover-row" id="arrow-direction-row"></div>
+        </div>
+        <input id="inline-label-editor" class="inline-label-editor" hidden spellcheck="false" />
+      </div>
+      <div class="notes-panel" id="notes-panel" hidden>
+        <div class="notes-panel-header">
+          <span>Notas</span>
+          <button id="notes-panel-close" title="Fechar">✕</button>
+        </div>
+        <div class="notes-view" id="notes-view"></div>
+      </div>
+    </main>
+
+    <div class="modal-backdrop" id="modal-backdrop" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <h2 id="modal-title">New node</h2>
+        <label for="modal-id">ID (optional)</label>
+        <input id="modal-id" spellcheck="false" placeholder="auto-generated if left blank" />
+        <div class="modal-error" id="modal-error" hidden></div>
+        <div class="modal-actions">
+          <button id="modal-cancel">Cancel</button>
+          <button class="primary" id="modal-confirm">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import mermaid from './mermaid.esm.mjs';
+      import { attachPanZoom } from './panzoom.js';
+      import {
+        SHAPES,
+        shapeLine,
+        shapeToken,
+        isValidId,
+        extractExistingIds,
+        nextAutoId,
+        shapeIconSvg,
+        findNodeDeclaration,
+        findLineForNodeId,
+        removeNodeDeclarationLine,
+      } from './shapes.js';
+      import {
+        buildEdgeIndex,
+        rewriteEdgeEndpoint,
+        rewriteEdgeArrow,
+        rewriteEdgeLabel,
+        removeEdgeSegment,
+        removeNodeEdges,
+        assignEdgeId,
+        clearEdgeId,
+      } from './edgeEditor.js';
+      import { parseNotes, setNote, removeNote, stripNotes } from './notes.js';
+      import { highlightMermaid } from './highlight.js';
+      import { getProject, updateProject } from './projectStore.js';
+
+      // A single curated palette (theme: 'base' + explicit variables, rather than mermaid's
+      // stock 'dark' theme) so every diagram in this editor reads consistently against the
+      // app's own dark chrome instead of each diagram's node/cluster/line colors drifting
+      // with whatever mermaid derives from its defaults.
+      const THEME_VARIABLES = {
+        darkMode: true,
+        background: '#0f1115',
+        primaryColor: '#171a21',
+        primaryTextColor: '#e6e9ef',
+        primaryBorderColor: '#3a4152',
+        secondaryColor: '#1b1f28',
+        tertiaryColor: '#1b1f28',
+        lineColor: '#5b6472',
+        textColor: '#e6e9ef',
+        mainBkg: '#171a21',
+        nodeBorder: '#3a4152',
+        clusterBkg: '#161a22',
+        clusterBorder: '#2a2f3a',
+        titleColor: '#c9cedb',
+        edgeLabelBackground: '#171a21',
+        arrowheadColor: '#8b93a5',
+      };
+
+      /**
+       * A diagram pasted in from elsewhere sometimes carries its own frontmatter `theme`/
+       * `look` config (e.g. `---\nconfig:\n  theme: redux-dark\n---`) — mermaid always lets
+       * that override `mermaid.initialize()` for that render, which would otherwise silently
+       * break THEME_VARIABLES the moment such a diagram is opened here. Strip just those two
+       * keys from a leading frontmatter block before rendering; nothing else in it (e.g.
+       * `layout`) is touched, and the saved source itself is never modified — this only
+       * affects what gets rendered.
+       */
+      function stripThemeOverrideForRender(code) {
+        const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(code);
+        if (!m) {
+          return code;
+        }
+        const cleaned = m[1]
+          .replace(/^\s*(theme|look):.*$/gm, '')
+          .replace(/\n{2,}/g, '\n')
+          .trim();
+        const rest = code.slice(m[0].length);
+        return cleaned ? `---\n${cleaned}\n---\n${rest}` : rest;
+      }
+
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'loose',
+        theme: 'base',
+        themeVariables: THEME_VARIABLES,
+        flowchart: { curve: 'basis' },
+      });
+
+      const id = new URLSearchParams(window.location.search).get('id');
+      if (!id) {
+        window.location.href = './index.html';
+      }
+
+      const nameEl = document.getElementById('name');
+      const srcEl = document.getElementById('src');
+      const viewportEl = document.getElementById('viewport');
+      const diagramEl = document.getElementById('diagram');
+      const errorEl = document.getElementById('error');
+      const statusEl = document.getElementById('status');
+      const mainEl = document.querySelector('main');
+      const notesPanelEl = document.getElementById('notes-panel');
+      const notesPanelCloseBtn = document.getElementById('notes-panel-close');
+      const notesViewEl = document.getElementById('notes-view');
+      const codeBackdropWrapEl = document.querySelector('.code-backdrop');
+      const codeBackdropEl = document.getElementById('code-highlight');
+
+      function updateCodeHighlight() {
+        codeBackdropEl.innerHTML = highlightMermaid(srcEl.value);
+      }
+      srcEl.addEventListener('input', updateCodeHighlight);
+      srcEl.addEventListener('scroll', () => {
+        codeBackdropWrapEl.scrollTop = srcEl.scrollTop;
+        codeBackdropWrapEl.scrollLeft = srcEl.scrollLeft;
+      });
+
+      const panzoom = attachPanZoom(viewportEl, diagramEl, {
+        onChange: () => {
+          repositionOverlaysForSelection();
+          scheduleViewSave();
+        },
+      });
+      document.getElementById('zoom-in').addEventListener('click', panzoom.zoomIn);
+      document.getElementById('zoom-out').addEventListener('click', panzoom.zoomOut);
+      document.getElementById('zoom-fit').addEventListener('click', panzoom.fit);
+
+      // Ctrl+wheel (and a trackpad pinch, which browsers report as wheel + ctrlKey) zooms
+      // the whole browser page by default. Inside the canvas that's already replaced by
+      // panzoom's own wheel handler, but anywhere else on this page — the code panel, the
+      // header, notes — it's just an accessibility footgun: an accidental ctrl+wheel while
+      // scrolling zooms the entire tab and you have to notice it and undo it. Block it
+      // everywhere on the page, not just inside the canvas.
+      window.addEventListener(
+        'wheel',
+        (e) => {
+          if (e.ctrlKey) {
+            e.preventDefault();
+          }
+        },
+        { passive: false }
+      );
+
+      let currentSvg = null;
+      let currentEdgeIndex = new Map();
+      let selection = null;
+      let suppressNextClick = false;
+      let suppressNextClickTimeout;
+
+      let renderSeq = 0;
+      async function renderDiagram({ refit = false } = {}) {
+        const code = srcEl.value;
+        updateCodeHighlight();
+        const renderId = `me-${++renderSeq}`;
+        try {
+          const { svg, bindFunctions } = await mermaid.render(
+            renderId,
+            stripThemeOverrideForRender(code)
+          );
+          diagramEl.innerHTML = svg;
+          bindFunctions?.(diagramEl);
+          errorEl.hidden = true;
+          currentSvg = diagramEl.querySelector('svg');
+          if (currentSvg) {
+            widenEdgeHitAreas(currentSvg);
+            currentEdgeIndex = buildEdgeIndex(code, currentSvg);
+            drawNoteBadges(currentSvg);
+          }
+          clearSelection();
+          if (refit) {
+            panzoom.fit();
+          }
+        } catch (e) {
+          errorEl.textContent = String(e?.message ?? e);
+          errorEl.hidden = false;
+        }
+      }
+
+      async function saveProject() {
+        statusEl.classList.remove('error');
+        statusEl.textContent = 'salvando…';
+        try {
+          await updateProject(id, {
+            name: nameEl.value,
+            code: srcEl.value,
+            view: panzoom.getView(),
+            layout: layoutSelect.value,
+            hotpathsEnabled,
+          });
+          statusEl.textContent = 'salvo';
+        } catch (e) {
+          statusEl.classList.add('error');
+          statusEl.textContent = 'erro ao salvar';
+        }
+      }
+
+      // --- Undo/redo for canvas-driven edits (create/delete/rename/relink/etc.) ---
+      // Deliberately separate from the code textarea's own native undo (typing there
+      // keeps using the browser's built-in per-keystroke undo — this stack only ever
+      // gets a snapshot pushed by the canvas actions below, never by typing).
+      let undoStack = [];
+      let redoStack = [];
+      const HISTORY_LIMIT = 50;
+
+      /** Call once at the very start of a canvas action, before it mutates srcEl.value. */
+      function beginEdit() {
+        undoStack.push(srcEl.value);
+        if (undoStack.length > HISTORY_LIMIT) {
+          undoStack.shift();
+        }
+        redoStack = [];
+      }
+
+      async function undo() {
+        if (undoStack.length === 0) {
+          return;
+        }
+        redoStack.push(srcEl.value);
+        srcEl.value = undoStack.pop();
+        clearSelection();
+        clearTimeout(debounceID);
+        await renderDiagram();
+        saveProject();
+      }
+
+      async function redo() {
+        if (redoStack.length === 0) {
+          return;
+        }
+        undoStack.push(srcEl.value);
+        srcEl.value = redoStack.pop();
+        clearSelection();
+        clearTimeout(debounceID);
+        await renderDiagram();
+        saveProject();
+      }
+
+      let debounceID;
+      function scheduleAutosave() {
+        clearTimeout(debounceID);
+        statusEl.classList.remove('error');
+        statusEl.textContent = 'editando…';
+        debounceID = setTimeout(() => {
+          renderDiagram();
+          saveProject();
+        }, 600);
+      }
+
+      // Pan/zoom alone (no text edit) doesn't otherwise trigger a save — debounced
+      // separately, and without the "editando…" status flicker, since panning around
+      // isn't editing the diagram.
+      let viewDebounceID;
+      function scheduleViewSave() {
+        clearTimeout(viewDebounceID);
+        viewDebounceID = setTimeout(saveProject, 800);
+      }
+
+      // --- Layout engine (Dagre / ELK) ---
+      const layoutSelect = document.getElementById('layout');
+      let elkRegistered = false;
+      async function ensureLayoutRegistered(layout) {
+        if (layout === 'elk' && !elkRegistered) {
+          const mod = await import('./mermaid-layout-elk.esm.mjs');
+          mermaid.registerLayoutLoaders(mod.default);
+          elkRegistered = true;
+        }
+      }
+      layoutSelect.addEventListener('change', async () => {
+        await ensureLayoutRegistered(layoutSelect.value);
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'loose',
+          theme: 'base',
+          themeVariables: THEME_VARIABLES,
+          flowchart: { curve: 'basis' },
+          layout: layoutSelect.value,
+        });
+        clearTimeout(debounceID);
+        renderDiagram({ refit: true });
+        saveProject();
+      });
+
+      // --- Hotpaths hover/click toggle ---
+      // A re-render is required on every toggle (not just calling mermaid.setHotpathsEnabled):
+      // the currently-rendered SVG already has its hover/click listeners bound from whenever
+      // it was last drawn, so only a fresh render (which replaces the SVG outright) actually
+      // picks up the new on/off state.
+      const hotpathsToggleBtn = document.getElementById('hotpaths-toggle');
+      let hotpathsEnabled = true;
+
+      function applyHotpathsToggleUI() {
+        hotpathsToggleBtn.textContent = hotpathsEnabled ? 'Hotpaths: On' : 'Hotpaths: Off';
+        hotpathsToggleBtn.classList.toggle('active', hotpathsEnabled);
+        mermaid.setHotpathsEnabled(hotpathsEnabled);
+      }
+
+      hotpathsToggleBtn.addEventListener('click', () => {
+        hotpathsEnabled = !hotpathsEnabled;
+        applyHotpathsToggleUI();
+        clearTimeout(debounceID);
+        renderDiagram();
+        saveProject();
+      });
+
+      // --- Shapes / Subgraph insertion ---
+      const shapesBtn = document.getElementById('shapes-btn');
+      const shapePopover = document.getElementById('shape-popover');
+      const shapeMenuEl = document.querySelector('.shape-menu');
+      const subgraphBtn = document.getElementById('subgraph-btn');
+      const modalBackdrop = document.getElementById('modal-backdrop');
+      const modalTitle = document.getElementById('modal-title');
+      const modalIdInput = document.getElementById('modal-id');
+      const modalError = document.getElementById('modal-error');
+      const modalCancel = document.getElementById('modal-cancel');
+      const modalConfirm = document.getElementById('modal-confirm');
+
+      // The shape popover serves two modes: `insert` (from the canvas-toolbar shapes
+      // button — opens the ID-prompt modal for a brand new node) and `change` (from the
+      // element-toolbar on a selected node — rewrites that node's shape in place).
+      let shapePopoverMode = 'insert';
+      let shapePopoverTargetId = null;
+
+      for (const shape of SHAPES) {
+        const btn = document.createElement('button');
+        btn.dataset.shapeKey = shape.key;
+        btn.innerHTML = `<svg viewBox="0 0 24 24">${shapeIconSvg(shape)}</svg><span>${shape.label}</span>`;
+        btn.addEventListener('click', () => {
+          shapePopover.hidden = true;
+          if (shapePopoverMode === 'change') {
+            changeNodeShape(shapePopoverTargetId, shape);
+          } else {
+            openModal({ kind: 'node', shape });
+          }
+        });
+        shapePopover.appendChild(btn);
+      }
+
+      shapesBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        shapePopoverMode = 'insert';
+        for (const btn of shapePopover.children) {
+          btn.classList.remove('active');
+        }
+        shapeMenuEl.appendChild(shapePopover);
+        shapePopover.style.position = '';
+        shapePopover.style.left = '';
+        shapePopover.style.top = '';
+        shapePopover.hidden = !shapePopover.hidden;
+      });
+      document.addEventListener('click', (e) => {
+        if (
+          !shapePopover.hidden &&
+          !shapePopover.contains(e.target) &&
+          e.target !== shapesBtn &&
+          !etShapeBtn.contains(e.target)
+        ) {
+          shapePopover.hidden = true;
+        }
+        if (
+          !arrowPopover.hidden &&
+          !arrowPopover.contains(e.target) &&
+          !etArrowBtn.contains(e.target)
+        ) {
+          arrowPopover.hidden = true;
+        }
+      });
+
+      subgraphBtn.addEventListener('click', () => openModal({ kind: 'subgraph' }));
+
+      let pending = null;
+      function openModal(p) {
+        pending = p;
+        modalTitle.textContent = p.kind === 'subgraph' ? 'New Subgraph' : `New ${p.shape.label}`;
+        modalIdInput.value = '';
+        modalError.hidden = true;
+        modalBackdrop.hidden = false;
+        modalIdInput.focus();
+      }
+      function closeModal() {
+        modalBackdrop.hidden = true;
+        pending = null;
+      }
+      modalCancel.addEventListener('click', closeModal);
+      modalBackdrop.addEventListener('click', (e) => {
+        if (e.target === modalBackdrop) {
+          closeModal();
+        }
+      });
+      modalIdInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          confirmModal();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closeModal();
+        }
+      });
+      modalConfirm.addEventListener('click', confirmModal);
+
+      /** Finds the rendered element for a node or subgraph id, using mermaid's own domId suffix convention. */
+      function findElementForId(svg, targetId) {
+        const escaped = targetId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const nodeRe = new RegExp(`-flowchart-${escaped}-\\d+$`);
+        const all = Array.from(svg.querySelectorAll('[id]'));
+        const node = all.find((elem) => nodeRe.test(elem.id));
+        if (node) {
+          return node;
+        }
+        const subgraphRe = new RegExp(`-${escaped}$`);
+        return (
+          all.find((elem) => subgraphRe.test(elem.id) && elem.classList.contains('cluster')) ?? null
+        );
+      }
+
+      /**
+       * A node/cluster's own `<g>` typically carries `transform="translate(x,y)"` for its
+       * layout position — `getBBox()` ignores an element's own transform, returning its
+       * *local* box, so a naive read is offset by wherever mermaid happened to lay it out.
+       * Going through actual screen pixels and back via the SVG's screen CTM sidesteps that
+       * (and any other nested transform) entirely.
+       */
+      function bboxInSvgSpace(el, svg) {
+        const rect = el.getBoundingClientRect();
+        const ctm = svg.getScreenCTM().inverse();
+        const toSvgPoint = (x, y) => {
+          const pt = svg.createSVGPoint();
+          pt.x = x;
+          pt.y = y;
+          return pt.matrixTransform(ctm);
+        };
+        const p1 = toSvgPoint(rect.left, rect.top);
+        const p2 = toSvgPoint(rect.right, rect.bottom);
+        return {
+          x: Math.min(p1.x, p2.x),
+          y: Math.min(p1.y, p2.y),
+          width: Math.abs(p2.x - p1.x),
+          height: Math.abs(p2.y - p1.y),
+        };
+      }
+
+      /** Pan the canvas so the just-created node/subgraph is centered, keeping current zoom. */
+      function centerOnNewElement(targetId) {
+        const svg = diagramEl.querySelector('svg');
+        if (!svg) {
+          return;
+        }
+        const el = findElementForId(svg, targetId);
+        if (el) {
+          const b = bboxInSvgSpace(el, svg);
+          // centerOnPoint expects content-space (the panzoom module's own coordinate system,
+          // i.e. #diagram's untransformed pixel box), not the svg's own viewBox user-space that
+          // b is in — those two only coincide if the svg's rendered size happens to equal its
+          // viewBox 1:1. Route through real client/screen pixels (svgPointToClient, which
+          // accounts for the svg's own scaling) and back (clientToContent, which undoes just the
+          // panzoom transform) to convert.
+          const client = svgPointToClient(svg, b.x + b.width / 2, b.y + b.height / 2);
+          const content = panzoom.clientToContent(client.x, client.y);
+          panzoom.centerOnPoint(content.x, content.y);
+        } else {
+          panzoom.fit();
+        }
+      }
+
+      async function confirmModal() {
+        if (!pending) {
+          return;
+        }
+        const existingIds = extractExistingIds(stripNotes(srcEl.value));
+        const raw = modalIdInput.value.trim();
+        let newId;
+        if (!raw) {
+          newId = nextAutoId(existingIds, pending.kind === 'subgraph' ? 's' : 'n');
+        } else if (!isValidId(raw)) {
+          modalError.textContent = 'Invalid ID — start with a letter, then letters/numbers/_/-.';
+          modalError.hidden = false;
+          return;
+        } else if (existingIds.has(raw)) {
+          modalError.textContent = `"${raw}" is already used in this diagram.`;
+          modalError.hidden = false;
+          return;
+        } else {
+          newId = raw;
+        }
+
+        let line;
+        if (pending.kind === 'subgraph') {
+          const childId = nextAutoId(new Set([...existingIds, newId]), 'n');
+          line = `subgraph ${newId}["Untitled subgraph"]\n  ${childId}["Node"]\nend`;
+        } else {
+          line = shapeLine(pending.shape, newId, pending.shape.label);
+        }
+
+        const sep = srcEl.value.length && !srcEl.value.endsWith('\n') ? '\n' : '';
+        beginEdit();
+        srcEl.value = `${srcEl.value}${sep}${line}\n`;
+
+        closeModal();
+        clearTimeout(debounceID);
+        await renderDiagram();
+        centerOnNewElement(newId);
+        selectNode(newId);
+        saveProject();
+      }
+
+      // --- Element toolbar (change shape / change arrow type / view in code) ---
+      const elementToolbar = document.getElementById('element-toolbar');
+      const etShapeBtn = document.getElementById('et-shape-btn');
+      const etArrowBtn = document.getElementById('et-arrow-btn');
+      const etCodeBtn = document.getElementById('et-code-btn');
+      const etNoteBtn = document.getElementById('et-note-btn');
+      const arrowPopover = document.getElementById('arrow-popover');
+      const arrowStyleRow = document.getElementById('arrow-style-row');
+      const arrowHeadRow = document.getElementById('arrow-head-row');
+      const arrowDirectionLabel = document.getElementById('arrow-direction-label');
+      const arrowDirectionRow = document.getElementById('arrow-direction-row');
+      const inlineLabelEditor = document.getElementById('inline-label-editor');
+
+      // Style, arrowhead, and direction are independent choices in mermaid's own syntax
+      // (`-->`, `--o`, `-.-x`, `<-->`, `o--o`, ...) — three small groups instead of one list.
+      const ARROW_STYLES = [
+        { key: 'solid', label: 'Solid' },
+        { key: 'dashed', label: 'Dashed' },
+        { key: 'thick', label: 'Thick' },
+      ];
+      const ARROW_HEADS = [
+        { key: 'none', label: 'None' },
+        { key: 'arrow', label: 'Arrow' },
+        { key: 'circle', label: 'Circle' },
+        { key: 'cross', label: 'Cross' },
+      ];
+      const ARROW_DIRECTIONS = [
+        { key: 'one-way', label: 'One-way' },
+        { key: 'both', label: 'Both ways' },
+      ];
+
+      /** Builds the arrow token for a style/head/direction triple, e.g. ('dashed','circle',true) -> 'o-.-o'. */
+      function arrowToken(style, head, bidirectional) {
+        const headChar =
+          head === 'arrow' ? '>' : head === 'circle' ? 'o' : head === 'cross' ? 'x' : '';
+        // A headless line has no direction to mark, regardless of the bidirectional toggle.
+        const startChar = bidirectional && headChar ? (head === 'arrow' ? '<' : headChar) : '';
+        if (style === 'dashed') {
+          return `${startChar}-.-${headChar}`;
+        }
+        const ch = style === 'thick' ? '=' : '-';
+        // Two repeats + a head reads naturally (`-->`); a bare line needs three (`---`).
+        return startChar + ch.repeat(headChar ? 2 : 3) + headChar;
+      }
+
+      /** Inverse of arrowToken — best-effort, tolerates hand-typed variants like `--->`. */
+      function styleHeadFromToken(token) {
+        const bidirectional = /^[<ox]/.test(token);
+        const body = bidirectional ? token.slice(1) : token;
+        const headChar = /[>ox]$/.exec(body)?.[0] ?? '';
+        const head =
+          headChar === '>'
+            ? 'arrow'
+            : headChar === 'o'
+              ? 'circle'
+              : headChar === 'x'
+                ? 'cross'
+                : 'none';
+        const style = body.startsWith('-.-') ? 'dashed' : body[0] === '=' ? 'thick' : 'solid';
+        return { style, head, bidirectional: bidirectional && head !== 'none' };
+      }
+
+      let pendingArrowStyle = 'solid';
+      let pendingArrowHead = 'arrow';
+      let pendingArrowBidirectional = false;
+
+      function updateArrowPopoverActiveState() {
+        for (const btn of arrowStyleRow.children) {
+          btn.classList.toggle('active', btn.dataset.style === pendingArrowStyle);
+        }
+        for (const btn of arrowHeadRow.children) {
+          btn.classList.toggle('active', btn.dataset.head === pendingArrowHead);
+        }
+        // A headless line can't point either way, so the direction picker is moot then.
+        const directionApplicable = pendingArrowHead !== 'none';
+        arrowDirectionLabel.hidden = !directionApplicable;
+        arrowDirectionRow.hidden = !directionApplicable;
+        for (const btn of arrowDirectionRow.children) {
+          btn.classList.toggle(
+            'active',
+            btn.dataset.direction === (pendingArrowBidirectional ? 'both' : 'one-way')
+          );
+        }
+      }
+
+      for (const style of ARROW_STYLES) {
+        const btn = document.createElement('button');
+        btn.dataset.style = style.key;
+        const dashed = style.key === 'dashed';
+        const thick = style.key === 'thick';
+        const line = `<line x1="2" y1="8" x2="22" y2="8" stroke="currentColor" stroke-width="${thick ? 3 : 1.6}"${dashed ? ' stroke-dasharray="3 3"' : ''} stroke-linecap="round"/>`;
+        btn.innerHTML = `<svg viewBox="0 0 24 16">${line}</svg><span>${style.label}</span>`;
+        btn.addEventListener('click', () => {
+          pendingArrowStyle = style.key;
+          updateArrowPopoverActiveState();
+          changeEdgeArrow(
+            arrowToken(pendingArrowStyle, pendingArrowHead, pendingArrowBidirectional)
+          );
+        });
+        arrowStyleRow.appendChild(btn);
+      }
+
+      for (const head of ARROW_HEADS) {
+        const btn = document.createElement('button');
+        btn.dataset.head = head.key;
+        let tip;
+        if (head.key === 'arrow') {
+          tip = `<line x1="2" y1="8" x2="16" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14 4 L21 8 L14 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+        } else if (head.key === 'circle') {
+          tip = `<line x1="2" y1="8" x2="16" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="19" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/>`;
+        } else if (head.key === 'cross') {
+          tip = `<line x1="2" y1="8" x2="16" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="16" y1="4" x2="22" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="22" y1="4" x2="16" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`;
+        } else {
+          tip = `<line x1="2" y1="8" x2="22" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`;
+        }
+        btn.innerHTML = `<svg viewBox="0 0 24 16">${tip}</svg><span>${head.label}</span>`;
+        btn.addEventListener('click', () => {
+          pendingArrowHead = head.key;
+          updateArrowPopoverActiveState();
+          changeEdgeArrow(
+            arrowToken(pendingArrowStyle, pendingArrowHead, pendingArrowBidirectional)
+          );
+        });
+        arrowHeadRow.appendChild(btn);
+      }
+
+      for (const dir of ARROW_DIRECTIONS) {
+        const btn = document.createElement('button');
+        btn.dataset.direction = dir.key;
+        const tip =
+          dir.key === 'both'
+            ? `<path d="M8 4 L2 8 L8 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="8" x2="22" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M16 4 L22 8 L16 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`
+            : `<line x1="2" y1="8" x2="16" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14 4 L21 8 L14 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+        btn.innerHTML = `<svg viewBox="0 0 24 16">${tip}</svg><span>${dir.label}</span>`;
+        btn.addEventListener('click', () => {
+          pendingArrowBidirectional = dir.key === 'both';
+          updateArrowPopoverActiveState();
+          changeEdgeArrow(
+            arrowToken(pendingArrowStyle, pendingArrowHead, pendingArrowBidirectional)
+          );
+        });
+        arrowDirectionRow.appendChild(btn);
+      }
+
+      /** Reads the selected edge's current arrow token, seeds pending style/head/direction, and shows the popover. */
+      function openArrowPopoverForSelection() {
+        if (!selection || selection.kind !== 'edge') {
+          return;
+        }
+        const entry = currentEdgeIndex.get(selection.domId);
+        const parsed = entry?.styleToken
+          ? styleHeadFromToken(entry.styleToken)
+          : { style: 'solid', head: 'arrow', bidirectional: false };
+        pendingArrowStyle = parsed.style;
+        pendingArrowHead = parsed.head;
+        pendingArrowBidirectional = parsed.bidirectional;
+        updateArrowPopoverActiveState();
+        openFloatingPopover(arrowPopover, etArrowBtn);
+      }
+
+      /** Positions a fixed-position popover near an anchor button, clamped to the viewport. */
+      function openFloatingPopover(el, anchorEl) {
+        el.hidden = false;
+        const rect = anchorEl.getBoundingClientRect();
+        const w = el.offsetWidth;
+        const h = el.offsetHeight;
+        let left = Math.min(rect.left, window.innerWidth - w - 8);
+        let top = Math.min(rect.bottom + 6, window.innerHeight - h - 8);
+        el.style.left = `${Math.max(8, left)}px`;
+        el.style.top = `${Math.max(8, top)}px`;
+      }
+
+      /** Positions the element toolbar centered above (cx, topY), clamped to the viewport. */
+      function positionElementToolbar(cx, topY) {
+        elementToolbar.hidden = false;
+        const w = elementToolbar.offsetWidth;
+        const h = elementToolbar.offsetHeight;
+        let left = Math.min(Math.max(8, cx - w / 2), window.innerWidth - w - 8);
+        let top = Math.max(8, topY - h - 10);
+        elementToolbar.style.left = `${left}px`;
+        elementToolbar.style.top = `${top}px`;
+      }
+
+      const HANDLE_AVOID_RADIUS = 7 + 6; // handle circle radius + a small clearance margin
+
+      function circleIntersectsRect(cx, cy, r, rx, ry, rw, rh) {
+        const closestX = Math.max(rx, Math.min(cx, rx + rw));
+        const closestY = Math.max(ry, Math.min(cy, ry + rh));
+        const dx = cx - closestX;
+        const dy = cy - closestY;
+        return dx * dx + dy * dy < r * r;
+      }
+
+      /**
+       * Positions the element toolbar near an edge without covering either of its drag-handle
+       * endpoints. There's no fixed "good side" — a vertical edge needs the toolbar off to a
+       * side, a horizontal edge needs it above or below — so instead of a fixed offset this
+       * walks candidate positions along the perpendicular to the edge (both sides, at increasing
+       * distance) and picks the first one whose bounding box doesn't overlap either handle's
+       * circle, clamped to the viewport as a last resort.
+       */
+      function positionElementToolbarForEdge(startPt, endPt) {
+        elementToolbar.hidden = false;
+        const w = elementToolbar.offsetWidth;
+        const h = elementToolbar.offsetHeight;
+
+        const mx = (startPt.x + endPt.x) / 2;
+        const my = (startPt.y + endPt.y) / 2;
+        const dx = endPt.x - startPt.x;
+        const dy = endPt.y - startPt.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const perpX = -dy / len;
+        const perpY = dx / len;
+
+        const baseGap = 10 + Math.hypot(w, h) / 2;
+        const collidesAt = (left, top) =>
+          circleIntersectsRect(startPt.x, startPt.y, HANDLE_AVOID_RADIUS, left, top, w, h) ||
+          circleIntersectsRect(endPt.x, endPt.y, HANDLE_AVOID_RADIUS, left, top, w, h);
+
+        // Prefer whichever perpendicular side lands higher on screen first — feels more like a
+        // tooltip — then try the other side, each at increasing distance from the line.
+        const sides = perpY <= 0 ? [1, -1] : [-1, 1];
+        let best = null;
+        for (const side of sides) {
+          for (let step = 0; step < 4; step++) {
+            const gap = baseGap + step * 12;
+            const px = mx + perpX * side * gap;
+            const py = my + perpY * side * gap;
+            const left = px - w / 2;
+            const top = py - h / 2;
+            if (!collidesAt(left, top)) {
+              best = { left, top };
+              break;
+            }
+          }
+          if (best) {
+            break;
+          }
+        }
+        if (!best) {
+          // Both sides stayed too close at every distance tried (a very short edge) — settle
+          // for the farthest one attempted rather than leaving the toolbar stuck on a handle.
+          const side = sides[0];
+          const gap = baseGap + 3 * 12;
+          best = {
+            left: mx + perpX * side * gap - w / 2,
+            top: my + perpY * side * gap - h / 2,
+          };
+        }
+
+        elementToolbar.style.left = `${Math.min(Math.max(8, best.left), window.innerWidth - w - 8)}px`;
+        elementToolbar.style.top = `${Math.min(Math.max(8, best.top), window.innerHeight - h - 8)}px`;
+      }
+
+      function svgPointToClient(svg, x, y) {
+        const pt = svg.createSVGPoint();
+        pt.x = x;
+        pt.y = y;
+        const p = pt.matrixTransform(svg.getScreenCTM());
+        return { x: p.x, y: p.y };
+      }
+
+      /** Inverse of svgPointToClient — a client (viewport) point to the svg's own user-space. */
+      function clientToSvgPoint(svg, clientX, clientY) {
+        const pt = svg.createSVGPoint();
+        pt.x = clientX;
+        pt.y = clientY;
+        const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+        return { x: p.x, y: p.y };
+      }
+
+      function hideElementToolbar() {
+        elementToolbar.hidden = true;
+        arrowPopover.hidden = true;
+        if (shapePopoverMode === 'change') {
+          shapePopover.hidden = true;
+        }
+      }
+
+      function showElementToolbarForNode(nodeId) {
+        const el = findElementForId(currentSvg, nodeId);
+        if (!el) {
+          return;
+        }
+        // Subgraphs only ever render as a plain bracketed box — there's no alternate
+        // shape to switch between, unlike a node.
+        etShapeBtn.hidden = el.classList.contains('cluster');
+        etArrowBtn.hidden = true;
+        etCodeBtn.hidden = false;
+        const rect = el.getBoundingClientRect();
+        positionElementToolbar(rect.left + rect.width / 2, rect.top);
+      }
+
+      function showElementToolbarForEdge(domId) {
+        const pathEl = currentSvg.querySelector(`[id="${CSS.escape(domId)}"]`);
+        if (!pathEl) {
+          return;
+        }
+        const entry = currentEdgeIndex.get(domId);
+        etShapeBtn.hidden = true;
+        etArrowBtn.hidden = !entry?.arrowSpan;
+        etCodeBtn.hidden = entry?.lineIndex == null;
+        const segments = edgeSegmentGroup(pathEl);
+        const firstSeg = segments[0];
+        const lastSeg = segments[segments.length - 1];
+        const startSvg = firstSeg.getPointAtLength(0);
+        const endSvg = lastSeg.getPointAtLength(lastSeg.getTotalLength());
+        positionElementToolbarForEdge(
+          svgPointToClient(currentSvg, startSvg.x, startSvg.y),
+          svgPointToClient(currentSvg, endSvg.x, endSvg.y)
+        );
+      }
+
+      /** Keeps the toolbar (and any open popover it spawned) glued to the selection while panning/zooming. */
+      function repositionOverlaysForSelection() {
+        if (!selection || !currentSvg || elementToolbar.hidden) {
+          return;
+        }
+        if (selection.kind === 'node') {
+          const el = findElementForId(currentSvg, selection.id);
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            positionElementToolbar(rect.left + rect.width / 2, rect.top);
+          }
+        } else if (selection.kind === 'edge') {
+          const pathEl = currentSvg.querySelector(`[id="${CSS.escape(selection.domId)}"]`);
+          if (pathEl) {
+            const segments = edgeSegmentGroup(pathEl);
+            const firstSeg = segments[0];
+            const lastSeg = segments[segments.length - 1];
+            const startSvg = firstSeg.getPointAtLength(0);
+            const endSvg = lastSeg.getPointAtLength(lastSeg.getTotalLength());
+            positionElementToolbarForEdge(
+              svgPointToClient(currentSvg, startSvg.x, startSvg.y),
+              svgPointToClient(currentSvg, endSvg.x, endSvg.y)
+            );
+          }
+        }
+        if (!shapePopover.hidden && shapePopoverMode === 'change') {
+          openFloatingPopover(shapePopover, etShapeBtn);
+        }
+        if (!arrowPopover.hidden) {
+          openFloatingPopover(arrowPopover, etArrowBtn);
+        }
+      }
+
+      function highlightLineInCode(lineIndex) {
+        if (lineIndex == null) {
+          return;
+        }
+        const lines = srcEl.value.split('\n');
+        if (lineIndex < 0 || lineIndex >= lines.length) {
+          return;
+        }
+        let start = 0;
+        for (let i = 0; i < lineIndex; i++) {
+          start += lines[i].length + 1;
+        }
+        const end = start + lines[lineIndex].length;
+        srcEl.focus();
+        srcEl.setSelectionRange(start, end);
+        const style = getComputedStyle(srcEl);
+        let lineHeight = parseFloat(style.lineHeight);
+        if (!lineHeight || Number.isNaN(lineHeight)) {
+          lineHeight = parseFloat(style.fontSize) * 1.5 || 19.5;
+        }
+        srcEl.scrollTop = Math.max(0, lineHeight * lineIndex - srcEl.clientHeight / 2);
+      }
+
+      function viewSelectionInCode() {
+        if (!selection) {
+          return;
+        }
+        const lineIndex =
+          selection.kind === 'node'
+            ? findLineForNodeId(srcEl.value, selection.id)
+            : (currentEdgeIndex.get(selection.domId)?.lineIndex ?? null);
+        highlightLineInCode(lineIndex);
+      }
+
+      async function changeNodeShape(nodeId, shape) {
+        const decl = findNodeDeclaration(srcEl.value, nodeId);
+        const label = decl?.label ?? nodeId;
+        beginEdit();
+        if (decl) {
+          srcEl.value =
+            srcEl.value.slice(0, decl.start) +
+            shapeToken(shape, nodeId, label) +
+            srcEl.value.slice(decl.end);
+        } else {
+          const sep = srcEl.value.length && !srcEl.value.endsWith('\n') ? '\n' : '';
+          srcEl.value = `${srcEl.value}${sep}${shapeLine(shape, nodeId, label)}\n`;
+        }
+        clearTimeout(debounceID);
+        await renderDiagram();
+        selectNode(nodeId);
+        saveProject();
+      }
+
+      /** The suffix mermaid's own dom id for this edge ends in — its explicit id if it has
+       *  one (also what its `g.label`'s own data-id is), else the auto `L_start_end_n`. */
+      function edgeIdSuffix(entry) {
+        return entry.edgeId ?? `L_${entry.start}_${entry.end}_${entry.counter}`;
+      }
+
+      async function changeEdgeArrow(newToken) {
+        if (!selection || selection.kind !== 'edge') {
+          return;
+        }
+        const entry = currentEdgeIndex.get(selection.domId);
+        if (!entry?.arrowSpan) {
+          return;
+        }
+        const popoverWasOpen = !arrowPopover.hidden;
+        beginEdit();
+        srcEl.value = rewriteEdgeArrow(srcEl.value, entry, newToken);
+        clearTimeout(debounceID);
+        await renderDiagram();
+        // The edge's dom id is prefixed with this render's svg id (`me-1-`, `me-2-`, ...),
+        // which changes every render — re-derive it from the stable start/end/counter (or
+        // its own explicit id, if it has one) rather than reusing the pre-render domId,
+        // which no longer exists in the new svg.
+        const newDomId = currentSvg ? `${currentSvg.id}-${edgeIdSuffix(entry)}` : null;
+        if (newDomId && currentSvg.getElementById(newDomId)) {
+          selectEdge(newDomId);
+          // Keep the popover open (repositioned + re-synced) across successive picks, so
+          // switching style then head doesn't require re-opening the popover each time.
+          if (popoverWasOpen) {
+            openArrowPopoverForSelection();
+          }
+        }
+        saveProject();
+      }
+
+      /**
+       * Rewrites `id`'s own declared label (adding a plain-rect declaration if it has
+       * none yet — same fallback `changeNodeShape` uses). `kind: 'subgraph'` additionally
+       * covers the rarer case of a subgraph with no title at all yet (`subgraph s1` with
+       * no trailing `[...]`), which isn't a node declaration `findNodeDeclaration` would
+       * ever match.
+       */
+      async function renameLabel(id, kind, newLabel, reselect = true) {
+        const decl = findNodeDeclaration(srcEl.value, id);
+        beginEdit();
+        if (decl) {
+          const shape = SHAPES.find((s) => s.key === decl.shapeKey) ?? SHAPES[0];
+          srcEl.value =
+            srcEl.value.slice(0, decl.start) +
+            shapeToken(shape, id, newLabel) +
+            srcEl.value.slice(decl.end);
+        } else if (kind === 'subgraph') {
+          srcEl.value = insertSubgraphTitle(srcEl.value, id, newLabel);
+        } else {
+          const sep = srcEl.value.length && !srcEl.value.endsWith('\n') ? '\n' : '';
+          srcEl.value = `${srcEl.value}${sep}${shapeLine(SHAPES[0], id, newLabel)}\n`;
+        }
+        clearTimeout(debounceID);
+        await renderDiagram();
+        if (reselect) {
+          selectNode(id);
+        }
+        saveProject();
+      }
+
+      /** Adds a `["title"]` right after a bare `subgraph id` header line that doesn't have one yet. */
+      function insertSubgraphTitle(source, id, title) {
+        const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(`^(\\s*subgraph\\s+${escapedId})(\\s|$)`);
+        const lines = source.split('\n');
+        for (const [i, line] of lines.entries()) {
+          const m = re.exec(line);
+          if (m) {
+            lines[i] =
+              line.slice(0, m[1].length) +
+              shapeToken(SHAPES[0], '', title) +
+              line.slice(m[1].length);
+            break;
+          }
+        }
+        return lines.join('\n');
+      }
+
+      async function renameEdgeLabel(entry, newLabel, reselect = true) {
+        beginEdit();
+        srcEl.value = rewriteEdgeLabel(srcEl.value, entry, newLabel);
+        clearTimeout(debounceID);
+        await renderDiagram();
+        const newDomId = currentSvg ? `${currentSvg.id}-${edgeIdSuffix(entry)}` : null;
+        if (reselect && newDomId && currentSvg.getElementById(newDomId)) {
+          selectEdge(newDomId);
+        }
+        saveProject();
+      }
+
+      /**
+       * Floats `inlineLabelEditor` over `rect` (client/screen space, like everything else
+       * positioned against the live SVG in this file), pre-filled with `currentText`.
+       * Enter or blur commits (calling `onCommit` only if the text actually changed);
+       * Escape cancels and leaves the source untouched — same as the reference editor's
+       * own double-click-to-rename.
+       */
+      function openInlineLabelEditor(rect, currentText, onCommit) {
+        inlineLabelEditor.hidden = false;
+        inlineLabelEditor.value = currentText;
+        const w = Math.max(rect.width + 24, 70);
+        inlineLabelEditor.style.width = `${w}px`;
+        inlineLabelEditor.style.left = `${rect.x + rect.width / 2 - w / 2}px`;
+        inlineLabelEditor.style.top = `${rect.y + rect.height / 2 - 12}px`;
+        inlineLabelEditor.focus();
+        inlineLabelEditor.select();
+
+        let done = false;
+        // Blur fires when clicking anywhere else on the canvas to leave the editor —
+        // including on empty space to deselect, or on a different element. Committing
+        // that has to be silent about it and NOT force the just-edited element back to
+        // selected: that click already has its own idea of what should now be selected,
+        // and re-selecting here would race it (renderDiagram()'s own async re-render
+        // lands after the click's synchronous selection change, clobbering it back).
+        // Enter has no such competing click, so reselecting there is safe and matches
+        // the convenience of staying on the element to keep tweaking it.
+        function commit(viaEnter) {
+          if (done) return;
+          done = true;
+          cleanup();
+          if (inlineLabelEditor.value !== currentText) {
+            onCommit(inlineLabelEditor.value, { viaEnter });
+          }
+        }
+        function cancel() {
+          if (done) return;
+          done = true;
+          cleanup();
+        }
+        function onKeydown(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit(true);
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancel();
+          }
+        }
+        function onBlur() {
+          commit(false);
+        }
+        function cleanup() {
+          inlineLabelEditor.hidden = true;
+          inlineLabelEditor.removeEventListener('keydown', onKeydown);
+          inlineLabelEditor.removeEventListener('blur', onBlur);
+        }
+        inlineLabelEditor.addEventListener('keydown', onKeydown);
+        inlineLabelEditor.addEventListener('blur', onBlur);
+      }
+
+      function startNodeLabelEdit(id, el) {
+        const decl = findNodeDeclaration(srcEl.value, id);
+        const currentText = decl?.label ?? id;
+        const isCluster = el.classList.contains('cluster');
+        // A subgraph's own bbox spans its whole body — its title sits in the small
+        // `.cluster-label` header at the top, which is where the editor should float.
+        const labelEl = (isCluster ? el.querySelector('.cluster-label') : null) ?? el;
+        selectNode(id);
+        openInlineLabelEditor(
+          labelEl.getBoundingClientRect(),
+          currentText,
+          (newLabel, { viaEnter }) => {
+            renameLabel(id, isCluster ? 'subgraph' : 'node', newLabel, viaEnter);
+          }
+        );
+      }
+
+      function startEdgeLabelEdit(domId) {
+        const entry = currentEdgeIndex.get(domId);
+        if (!entry?.arrowSpan) {
+          return;
+        }
+        const currentText = entry.label ?? '';
+        const pathEl = currentSvg.querySelector(`[id="${CSS.escape(domId)}"]`);
+        if (!pathEl) {
+          return;
+        }
+        const labelEl = currentSvg.querySelector(
+          `g.label[data-id="${CSS.escape(edgeIdSuffix(entry))}"]`
+        );
+        const labelRect = labelEl?.getBoundingClientRect();
+        let rect;
+        if (labelRect && labelRect.width > 0) {
+          rect = labelRect;
+        } else {
+          // No real label to anchor on yet — either there's no rendered label group at
+          // all (self-loops don't carry this data-id), or there is one but it's empty:
+          // mermaid leaves a label-less edge's label group untransformed at the SVG's
+          // own origin rather than actually positioning it, so an empty labelEl's rect
+          // can't be trusted either way. Fall back to the edge's own midpoint.
+          const segments = edgeSegmentGroup(pathEl);
+          const mid = segments[Math.floor(segments.length / 2)];
+          const pt = mid.getPointAtLength(mid.getTotalLength() / 2);
+          const client = svgPointToClient(currentSvg, pt.x, pt.y);
+          rect = { x: client.x, y: client.y, width: 0, height: 0 };
+        }
+        selectEdge(domId);
+        openInlineLabelEditor(rect, currentText, (newLabel, { viaEnter }) => {
+          renameEdgeLabel(entry, newLabel, viaEnter);
+        });
+      }
+
+      // --- Delete the current selection (Backspace/Delete) ---
+
+      /** Finds `subgraph <id>`'s header line and its matching (nesting-aware) `end` line. */
+      function findSubgraphBlock(lines, subgraphId) {
+        const escapedId = subgraphId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const headerRe = new RegExp(`^\\s*subgraph\\s+${escapedId}(\\s|\\[|$)`);
+        const headerIdx = lines.findIndex((l) => headerRe.test(l));
+        if (headerIdx === -1) {
+          return null;
+        }
+        let depth = 1;
+        for (let i = headerIdx + 1; i < lines.length; i++) {
+          const trimmed = lines[i].trim();
+          if (/^subgraph\b/.test(trimmed)) {
+            depth++;
+          } else if (/^end$/.test(trimmed)) {
+            depth--;
+            if (depth === 0) {
+              return { headerIdx, endIdx: i };
+            }
+          }
+        }
+        return null;
+      }
+
+      /**
+       * Deletes a subgraph's whole `subgraph ... end` block (nested subgraphs and all),
+       * plus every edge elsewhere in the diagram touching the subgraph itself or any id
+       * that was declared inside it — same "deleting a container deletes its contents"
+       * cascade as deleting a node deletes its edges.
+       */
+      function deleteSubgraphFromSource(source, subgraphId) {
+        const lines = source.split('\n');
+        const block = findSubgraphBlock(lines, subgraphId);
+        if (!block) {
+          return source;
+        }
+        const blockText = lines.slice(block.headerIdx, block.endIdx + 1).join('\n');
+        const cascadeIds = extractExistingIds(blockText);
+        cascadeIds.add(subgraphId);
+        lines.splice(block.headerIdx, block.endIdx - block.headerIdx + 1);
+        let result = lines.join('\n');
+        for (const cascadeId of cascadeIds) {
+          result = removeNodeEdges(result, cascadeId);
+        }
+        return result;
+      }
+
+      /**
+       * Removes any subgraph left with no member ids at all — most commonly right after
+       * deleting its last remaining node — repeating so a now-empty parent subgraph (its
+       * only child was itself an emptied-out subgraph) gets cleaned up too.
+       */
+      function pruneEmptySubgraphs(source) {
+        let result = source;
+        let changed = true;
+        while (changed) {
+          changed = false;
+          const lines = result.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            if (!/^\s*subgraph\s+[A-Za-z][\w-]*/.test(lines[i])) {
+              continue;
+            }
+            const subgraphId = /^\s*subgraph\s+([A-Za-z][\w-]*)/.exec(lines[i])[1];
+            const block = findSubgraphBlock(lines, subgraphId);
+            if (!block || block.headerIdx !== i) {
+              continue;
+            }
+            const interior = lines.slice(block.headerIdx + 1, block.endIdx).join('\n');
+            if (extractExistingIds(interior).size === 0) {
+              lines.splice(block.headerIdx, block.endIdx - block.headerIdx + 1);
+              // The pruned subgraph may still be referenced by edges elsewhere
+              // (e.g. `A --> s2`) — drop those too, same as deleting it outright.
+              result = removeNodeEdges(lines.join('\n'), subgraphId);
+              changed = true;
+              break;
+            }
+          }
+        }
+        return result;
+      }
+
+      /**
+       * Drops any note whose id (a node/subgraph id, or an edge's own explicit id) no
+       * longer appears anywhere in the diagram — the note's element was deleted, so the
+       * note has nothing left to be pinned to.
+       */
+      function pruneOrphanedNotes(source) {
+        // Scan with the notes block itself stripped out — a note's own freeform text
+        // (e.g. "fix A->B") must never be mistaken for real mermaid syntax and make an
+        // actually-orphaned note look like its id still exists.
+        const existingIds = extractExistingIds(stripNotes(source));
+        let result = source;
+        for (const key of parseNotes(source).keys()) {
+          const [kind, id] = key.split(':');
+          if (!existingIds.has(id)) {
+            result = removeNote(result, kind, id);
+          }
+        }
+        return result;
+      }
+
+      async function deleteSelection() {
+        if (!selection) {
+          return;
+        }
+        if (selection.kind === 'edge') {
+          const entry = currentEdgeIndex.get(selection.domId);
+          if (!entry) {
+            return;
+          }
+          beginEdit();
+          srcEl.value = removeEdgeSegment(srcEl.value, entry);
+        } else {
+          beginEdit();
+          const el = findElementForId(currentSvg, selection.id);
+          if (el?.classList.contains('cluster')) {
+            srcEl.value = deleteSubgraphFromSource(srcEl.value, selection.id);
+          } else {
+            srcEl.value = removeNodeEdges(srcEl.value, selection.id);
+            srcEl.value = removeNodeDeclarationLine(srcEl.value, selection.id);
+          }
+          srcEl.value = pruneEmptySubgraphs(srcEl.value);
+        }
+        srcEl.value = pruneOrphanedNotes(srcEl.value);
+        clearSelection();
+        clearTimeout(debounceID);
+        await renderDiagram();
+        saveProject();
+      }
+
+      function isEditableTarget(el) {
+        return (
+          !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+        );
+      }
+
+      window.addEventListener('keydown', (e) => {
+        if (!modalBackdrop.hidden || isEditableTarget(document.activeElement)) {
+          return;
+        }
+        if ((e.key === 'Backspace' || e.key === 'Delete') && selection) {
+          e.preventDefault();
+          deleteSelection();
+          return;
+        }
+        const mod = e.ctrlKey || e.metaKey;
+        if (mod && !e.shiftKey && e.key.toLowerCase() === 'z') {
+          e.preventDefault();
+          undo();
+        } else if (
+          mod &&
+          (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))
+        ) {
+          e.preventDefault();
+          redo();
+        }
+      });
+
+      // --- Per-element notes (node/edge/subgraph), stored in the source itself ---
+
+      function openNotesPanel() {
+        notesPanelEl.hidden = false;
+        mainEl.classList.add('notes-open');
+        renderNotesView();
+      }
+      function closeNotesPanel() {
+        notesPanelEl.hidden = true;
+        mainEl.classList.remove('notes-open');
+      }
+      notesPanelCloseBtn.addEventListener('click', closeNotesPanel);
+      document.getElementById('notes-panel-open').addEventListener('click', openNotesPanel);
+      etNoteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openNotesPanel();
+      });
+
+      function noteKindLabel(kind) {
+        return kind === 'node' ? 'Nó' : kind === 'subgraph' ? 'Subgraph' : 'Aresta';
+      }
+
+      /**
+       * What the *current* selection maps to for note purposes: a node/subgraph already
+       * has a stable id; an edge only has one once a note has actually been saved on it
+       * (`id: null` until then — `commitNote` mints one lazily, the first time it's
+       * needed, rather than cluttering every edge with an id nobody asked for).
+       */
+      function currentSelectionNoteTarget() {
+        if (!selection) {
+          return null;
+        }
+        if (selection.kind === 'edge') {
+          const entry = currentEdgeIndex.get(selection.domId);
+          return entry ? { kind: 'edge', id: entry.edgeId ?? null, entry } : null;
+        }
+        const el = findElementForId(currentSvg, selection.id);
+        return { kind: el?.classList.contains('cluster') ? 'subgraph' : 'node', id: selection.id };
+      }
+
+      // reselect=false for a plain blur (clicking elsewhere to leave the textarea) — that
+      // click already has its own idea of what should now be selected (including empty
+      // canvas, to deselect), and forcing this element back to selected here would race
+      // it, same reasoning as openInlineLabelEditor's Enter-vs-blur split above.
+      async function commitNote(target, text, reselect = true) {
+        const key = target.id ? `${target.kind}:${target.id}` : null;
+        const current = key ? (parseNotes(srcEl.value).get(key) ?? '') : '';
+        if (current === text) {
+          return;
+        }
+        beginEdit();
+        let src = srcEl.value;
+        let id = target.id;
+        const trimmed = text.trim();
+        if (target.kind === 'edge' && trimmed && !id) {
+          id = nextAutoId(extractExistingIds(stripNotes(src)), 'note');
+          src = assignEdgeId(src, target.entry, id);
+        }
+        if (id) {
+          src = setNote(src, target.kind, id, text);
+        }
+        if (target.kind === 'edge' && !trimmed && target.id) {
+          src = clearEdgeId(src, target.entry);
+        }
+        srcEl.value = src;
+        clearTimeout(debounceID);
+        await renderDiagram();
+        // renderDiagram() clears `selection` itself, so re-select from `target` (captured
+        // before that happened) rather than the now-stale live variable.
+        if (reselect && (target.kind === 'node' || target.kind === 'subgraph')) {
+          selectNode(target.id);
+        } else if (reselect && target.kind === 'edge') {
+          // The edge's dom id may have changed (just gained/lost its explicit id) —
+          // re-derive it from the stable start/end/counter rather than the stale one.
+          const match = Array.from(currentEdgeIndex.entries()).find(
+            ([, e]) =>
+              e.start === target.entry.start &&
+              e.end === target.entry.end &&
+              e.counter === target.entry.counter
+          );
+          if (match) {
+            selectEdge(match[0]);
+          }
+        }
+        if (!notesPanelEl.hidden) {
+          renderNotesView();
+        }
+        saveProject();
+      }
+
+      function renderNotesList(notes) {
+        if (notes.size === 0) {
+          const p = document.createElement('p');
+          p.className = 'notes-empty';
+          p.textContent =
+            'Nenhuma nota ainda. Selecione um nó, aresta ou subgraph e clique em "Nota" pra criar uma.';
+          notesViewEl.appendChild(p);
+          return;
+        }
+        const list = document.createElement('div');
+        list.className = 'notes-list';
+        for (const [key, text] of notes) {
+          const [kind, id] = key.split(':');
+          const item = document.createElement('button');
+          item.className = 'notes-list-item';
+          const kindEl = document.createElement('span');
+          kindEl.className = 'notes-list-kind';
+          kindEl.textContent = noteKindLabel(kind);
+          const idEl = document.createElement('span');
+          idEl.className = 'notes-list-id';
+          idEl.textContent = id;
+          const snippetEl = document.createElement('span');
+          snippetEl.className = 'notes-list-snippet';
+          snippetEl.textContent = text.split('\n')[0];
+          item.append(kindEl, idEl, snippetEl);
+          item.addEventListener('click', () => {
+            if (kind === 'edge') {
+              const match = Array.from(currentEdgeIndex.entries()).find(([, e]) => e.edgeId === id);
+              if (match) {
+                selectEdge(match[0]);
+              }
+            } else {
+              selectNode(id);
+            }
+          });
+          list.appendChild(item);
+        }
+        notesViewEl.appendChild(list);
+      }
+
+      function renderNotesView() {
+        notesViewEl.innerHTML = '';
+        const notes = parseNotes(srcEl.value);
+        const target = currentSelectionNoteTarget();
+        if (!target) {
+          renderNotesList(notes);
+          return;
+        }
+
+        const header = document.createElement('div');
+        header.className = 'notes-detail-header';
+        header.textContent = `${noteKindLabel(target.kind)} · ${target.id ?? '(nova nota)'}`;
+
+        const textarea = document.createElement('textarea');
+        textarea.className = 'notes-textarea';
+        textarea.placeholder = 'Escreva uma nota para este elemento…';
+        textarea.value = target.id ? (notes.get(`${target.kind}:${target.id}`) ?? '') : '';
+
+        // A successful commit re-renders this whole panel (renderNotesView wipes
+        // notesViewEl and rebuilds it), which removes this still-focused textarea from
+        // the DOM — and *that* fires a native blur on it, invoking this same closure's
+        // blur handler again with the same (now stale) target. This flag makes sure only
+        // the first of any of these ever actually commits, same idiom as
+        // openInlineLabelEditor's `done`.
+        let committed = false;
+        function doCommit(text, reselect) {
+          if (committed) return;
+          committed = true;
+          commitNote(target, text, reselect);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'notes-detail-actions';
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = 'Remover nota';
+        removeBtn.hidden = !textarea.value;
+        removeBtn.addEventListener('click', () => {
+          textarea.value = '';
+          doCommit('', true);
+        });
+        actions.appendChild(removeBtn);
+
+        textarea.addEventListener('blur', () => doCommit(textarea.value, false));
+        textarea.addEventListener('keydown', (e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            doCommit(textarea.value, true);
+          }
+        });
+
+        notesViewEl.append(header, textarea, actions);
+      }
+
+      /** A small badge near every noted node/subgraph/edge — visible without selecting it. */
+      function drawNoteBadges(svg) {
+        const notes = parseNotes(srcEl.value);
+        if (notes.size === 0) {
+          return;
+        }
+        const ns = 'http://www.w3.org/2000/svg';
+        const layer = document.createElementNS(ns, 'g');
+        layer.id = 'note-badges';
+        for (const key of notes.keys()) {
+          const [kind, id] = key.split(':');
+          let point;
+          if (kind === 'edge') {
+            // An edge's own label shares the same data-id as the edge itself (its
+            // explicit id, or mermaid's auto `L_...` one) — anchoring the badge just off
+            // its top-right corner keeps the label wherever mermaid would normally put
+            // it, without covering it. But mermaid only actually positions that group
+            // when there's real label text — an edge with no label gets one anyway, left
+            // untransformed at the SVG's own origin — so an empty label falls back to the
+            // path's own midpoint instead of landing wherever that origin happens to be.
+            const labelEl = svg.querySelector(`g.label[data-id="${CSS.escape(id)}"]`);
+            const labelBox = labelEl ? bboxInSvgSpace(labelEl, svg) : null;
+            if (labelBox && labelBox.width > 0) {
+              point = { x: labelBox.x + labelBox.width, y: labelBox.y };
+            } else {
+              const pathEl = svg.getElementById(`${svg.id}-${id}`);
+              if (!pathEl) {
+                continue;
+              }
+              point = pathEl.getPointAtLength(pathEl.getTotalLength() / 2);
+            }
+          } else {
+            const el = findElementForId(svg, id);
+            if (!el) {
+              continue;
+            }
+            const b = bboxInSvgSpace(el, svg);
+            point = { x: b.x + b.width - 2, y: b.y + 2 };
+          }
+          const badge = document.createElementNS(ns, 'g');
+          badge.classList.add('note-badge');
+          badge.setAttribute('transform', `translate(${point.x}, ${point.y})`);
+          badge.innerHTML = `
+            <circle r="6.5" fill="#f4b740" stroke="#0b1020" stroke-width="1.2"/>
+            <line x1="-3" y1="-2.2" x2="3" y2="-2.2" stroke="#0b1020" stroke-width="1" stroke-linecap="round"/>
+            <line x1="-3" y1="0" x2="3" y2="0" stroke="#0b1020" stroke-width="1" stroke-linecap="round"/>
+            <line x1="-3" y1="2.2" x2="1" y2="2.2" stroke="#0b1020" stroke-width="1" stroke-linecap="round"/>
+          `;
+          layer.appendChild(badge);
+        }
+        svg.appendChild(layer);
+      }
+
+      etShapeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!selection || selection.kind !== 'node') {
+          return;
+        }
+        shapePopoverMode = 'change';
+        shapePopoverTargetId = selection.id;
+        const decl = findNodeDeclaration(srcEl.value, selection.id);
+        for (const btn of shapePopover.children) {
+          btn.classList.toggle('active', btn.dataset.shapeKey === decl?.shapeKey);
+        }
+        // .canvas-toolbar (shapePopover's default parent) has a CSS transform for its own
+        // vertical centering — any transformed ancestor makes `position: fixed` descendants
+        // position relative to IT instead of the viewport, so this must live outside it.
+        document.body.appendChild(shapePopover);
+        shapePopover.style.position = 'fixed';
+        openFloatingPopover(shapePopover, etShapeBtn);
+      });
+
+      etArrowBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openArrowPopoverForSelection();
+      });
+
+      etCodeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        viewSelectionInCode();
+      });
+
+      // --- Click a node/edge to select it; drag an edge's endpoint to reassign it ---
+      const SELECT_COLOR = '#4f8cff';
+
+      function nodeIdFromElement(el) {
+        const m = /-flowchart-(.+)-\d+$/.exec(el.id);
+        return m ? m[1] : null;
+      }
+
+      /** Subgraphs render as `g.cluster` with dom id `{svgId}-{subgraphId}` — no other suffix. */
+      function clusterIdFromElement(el) {
+        if (!currentSvg?.id || !el.classList.contains('cluster')) {
+          return null;
+        }
+        const prefix = `${currentSvg.id}-`;
+        return el.id.startsWith(prefix) ? el.id.slice(prefix.length) : null;
+      }
+
+      /** A node or a subgraph — anything selectable/linkable as a diagram element. */
+      function selectableIdFromElement(el) {
+        return nodeIdFromElement(el) ?? clusterIdFromElement(el);
+      }
+
+      function selectionLayer() {
+        let layer = currentSvg.querySelector('#selection-layer');
+        if (!layer) {
+          layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          layer.id = 'selection-layer';
+          currentSvg.appendChild(layer);
+        }
+        return layer;
+      }
+
+      function clearSelection() {
+        selection = null;
+        const layer = currentSvg?.querySelector('#selection-layer');
+        if (layer) {
+          layer.innerHTML = '';
+        }
+        hideElementToolbar();
+        if (!notesPanelEl.hidden) {
+          renderNotesView();
+        }
+      }
+
+      /**
+       * Ensures every edge has a wide, invisible sibling path so it's easy to click —
+       * mermaid's real line is only ~1-2px. The clone inherits classes like
+       * edge-thickness-normal, whose CSS `stroke-width`/`stroke` rules win over a plain
+       * attribute (presentation attributes are the lowest-priority source in the SVG/CSS
+       * cascade), so this drops those classes and sets geometry via inline style instead.
+       */
+      function widenEdgeHitAreas(svg) {
+        for (const path of svg.querySelectorAll('path.flowchart-link')) {
+          const hit = path.cloneNode(false);
+          hit.removeAttribute('id');
+          hit.removeAttribute('class');
+          hit.removeAttribute('style');
+          hit.classList.add('edge-hit-area');
+          hit.style.fill = 'none';
+          hit.style.stroke = 'transparent';
+          hit.style.strokeWidth = '14';
+          hit.dataset.forEdge = path.id;
+          path.insertAdjacentElement('afterend', hit);
+        }
+      }
+
+      function drawNodeSelection(nodeId) {
+        const el = findElementForId(currentSvg, nodeId);
+        if (!el) {
+          return;
+        }
+        const b = bboxInSvgSpace(el, currentSvg);
+        const layer = selectionLayer();
+        const ns = 'http://www.w3.org/2000/svg';
+
+        const rect = document.createElementNS(ns, 'rect');
+        rect.setAttribute('x', b.x - 4);
+        rect.setAttribute('y', b.y - 4);
+        rect.setAttribute('width', b.width + 8);
+        rect.setAttribute('height', b.height + 8);
+        rect.setAttribute('rx', 6);
+        rect.setAttribute('fill', 'none');
+        rect.setAttribute('stroke', SELECT_COLOR);
+        rect.setAttribute('stroke-width', 2);
+        rect.style.pointerEvents = 'none';
+        layer.appendChild(rect);
+
+        const plus = document.createElementNS(ns, 'g');
+        plus.setAttribute('transform', `translate(${b.x + b.width / 2}, ${b.y + b.height + 18})`);
+        plus.style.cursor = 'pointer';
+        plus.innerHTML = `
+          <circle r="11" fill="${SELECT_COLOR}" stroke="#0b1020" stroke-width="1.5"/>
+          <line x1="-5" y1="0" x2="5" y2="0" stroke="#0b1020" stroke-width="2" stroke-linecap="round"/>
+          <line x1="0" y1="-5" x2="0" y2="5" stroke="#0b1020" stroke-width="2" stroke-linecap="round"/>
+        `;
+        plus.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          startPlusDrag(e, nodeId);
+        });
+        layer.appendChild(plus);
+        raiseNoteBadges();
+      }
+
+      /** Keeps note badges on top of whatever selection/label z-order shuffling just happened. */
+      function raiseNoteBadges() {
+        const badgesLayer = currentSvg?.querySelector('#note-badges');
+        if (badgesLayer) {
+          currentSvg.appendChild(badgesLayer);
+        }
+      }
+
+      function addHandle(layer, point, which, entry) {
+        const ns = 'http://www.w3.org/2000/svg';
+        const handle = document.createElementNS(ns, 'circle');
+        handle.setAttribute('cx', point.x);
+        handle.setAttribute('cy', point.y);
+        handle.setAttribute('r', 7);
+        handle.setAttribute('fill', SELECT_COLOR);
+        handle.setAttribute('stroke', '#0b1020');
+        handle.setAttribute('stroke-width', 2);
+        handle.style.cursor = 'grab';
+        handle.addEventListener('pointerdown', (e) => startHandleDrag(e, entry, which, point));
+        layer.appendChild(handle);
+      }
+
+      /**
+       * A self-loop (`D --> D`) renders as several path.flowchart-link segments sharing an
+       * `{id}-cyclic-special-` id prefix instead of mermaid's usual single path per edge.
+       * Returns every segment of `pathEl`'s loop (in document/draw order), or just `[pathEl]`
+       * for a normal edge — so selection highlighting/handle placement can treat both uniformly.
+       */
+      function edgeSegmentGroup(pathEl) {
+        const loopPrefix = /^(.*-cyclic-special-)/.exec(pathEl.id)?.[1];
+        if (!loopPrefix) {
+          return [pathEl];
+        }
+        return Array.from(currentSvg.querySelectorAll('path.flowchart-link')).filter((el) =>
+          el.id.startsWith(loopPrefix)
+        );
+      }
+
+      function drawEdgeSelection(domId) {
+        const pathEl = currentSvg.querySelector(`[id="${CSS.escape(domId)}"]`);
+        if (!pathEl) {
+          return;
+        }
+        const layer = selectionLayer();
+        const ns = 'http://www.w3.org/2000/svg';
+        const segments = edgeSegmentGroup(pathEl);
+
+        for (const seg of segments) {
+          const highlight = document.createElementNS(ns, 'path');
+          highlight.setAttribute('d', seg.getAttribute('d'));
+          highlight.setAttribute('fill', 'none');
+          highlight.setAttribute('stroke', SELECT_COLOR);
+          highlight.setAttribute('stroke-width', 3);
+          highlight.setAttribute('stroke-linecap', 'round');
+          highlight.style.pointerEvents = 'none';
+          layer.appendChild(highlight);
+        }
+
+        const entry = currentEdgeIndex.get(domId);
+        // #selection-layer is the last child of the svg, so it paints over everything
+        // before it — including this edge's own label, right where the highlight crosses
+        // it. Move the label's group to the very end too, so its text stays on top and
+        // legible instead of sitting under the highlight.
+        const labelGroup = entry
+          ? currentSvg
+              .querySelector(`g.label[data-id="${CSS.escape(edgeIdSuffix(entry))}"]`)
+              ?.closest('.edgeLabel')
+          : null;
+        if (labelGroup) {
+          currentSvg.appendChild(labelGroup);
+        }
+        raiseNoteBadges();
+
+        if (!entry?.startSpan) {
+          return; // selectable (and its arrow may still support retyping), but endpoints aren't safe to drag
+        }
+        // The true endpoints of a (possibly multi-segment) edge are the very start of its
+        // first segment and the very end of its last — for a normal edge that's just pathEl
+        // itself, since segments here is [pathEl].
+        const firstSeg = segments[0];
+        const lastSeg = segments[segments.length - 1];
+        addHandle(layer, firstSeg.getPointAtLength(0), 'start', entry);
+        addHandle(layer, lastSeg.getPointAtLength(lastSeg.getTotalLength()), 'end', entry);
+      }
+
+      function selectNode(nodeId) {
+        clearSelection();
+        selection = { kind: 'node', id: nodeId };
+        drawNodeSelection(nodeId);
+        showElementToolbarForNode(nodeId);
+        if (!notesPanelEl.hidden) {
+          renderNotesView();
+        }
+      }
+
+      function selectEdge(domId) {
+        clearSelection();
+        selection = { kind: 'edge', domId };
+        drawEdgeSelection(domId);
+        showElementToolbarForEdge(domId);
+        if (!notesPanelEl.hidden) {
+          renderNotesView();
+        }
+      }
+
+      /**
+       * Auto-pans the viewport while a drag's pointer sits near its edge, so dragging an
+       * edge endpoint (or the "+" link handle) can reach a node currently off-screen.
+       * `onTick(clientX, clientY)` re-runs on every pan step — even without a new pointer
+       * event — so the caller's own drag visuals (rubber-band line, hover target) stay in
+       * sync with content that just scrolled under an otherwise-stationary cursor.
+       */
+      function createEdgeAutopan(onTick) {
+        const MARGIN = 48;
+        const MAX_SPEED = 22;
+        let vx = 0;
+        let vy = 0;
+        let lastX = 0;
+        let lastY = 0;
+        let rafId = null;
+
+        function edgeSpeed(pos, size) {
+          if (pos < MARGIN) {
+            return MAX_SPEED * (1 - pos / MARGIN);
+          }
+          if (pos > size - MARGIN) {
+            return -MAX_SPEED * (1 - (size - pos) / MARGIN);
+          }
+          return 0;
+        }
+
+        function frame() {
+          panzoom.panBy(vx, vy);
+          onTick(lastX, lastY);
+          rafId = requestAnimationFrame(frame);
+        }
+
+        function update(clientX, clientY) {
+          lastX = clientX;
+          lastY = clientY;
+          const rect = viewportEl.getBoundingClientRect();
+          vx = edgeSpeed(clientX - rect.left, rect.width);
+          vy = edgeSpeed(clientY - rect.top, rect.height);
+          if ((vx || vy) && rafId === null) {
+            rafId = requestAnimationFrame(frame);
+          } else if (!vx && !vy && rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+        }
+
+        function stop() {
+          vx = 0;
+          vy = 0;
+          if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+        }
+
+        return { update, stop };
+      }
+
+      function startHandleDrag(e, entry, which, fixedPoint) {
+        e.stopPropagation();
+        e.preventDefault();
+        const layer = selectionLayer();
+        const ns = 'http://www.w3.org/2000/svg';
+        const rubberBand = document.createElementNS(ns, 'line');
+        rubberBand.setAttribute('x1', fixedPoint.x);
+        rubberBand.setAttribute('y1', fixedPoint.y);
+        rubberBand.setAttribute('x2', fixedPoint.x);
+        rubberBand.setAttribute('y2', fixedPoint.y);
+        rubberBand.setAttribute('stroke', SELECT_COLOR);
+        rubberBand.setAttribute('stroke-width', 2);
+        rubberBand.setAttribute('stroke-dasharray', '4 3');
+        rubberBand.style.pointerEvents = 'none';
+        layer.appendChild(rubberBand);
+
+        let hoverTarget = null;
+
+        // fixedPoint (x1/y1) is in the svg's own user-space (from pathEl.getPointAtLength),
+        // so x2/y2 must be too — panzoom.clientToContent only undoes the pan/zoom CSS
+        // transform, not the svg's own viewBox-to-rendered-size scale, which is a different
+        // factor whenever the svg's rendered size doesn't happen to equal its viewBox 1:1.
+        function updateVisual(clientX, clientY) {
+          const p = clientToSvgPoint(currentSvg, clientX, clientY);
+          rubberBand.setAttribute('x2', p.x);
+          rubberBand.setAttribute('y2', p.y);
+
+          const nodeEl =
+            document.elementFromPoint(clientX, clientY)?.closest?.('g.node, g.cluster') ?? null;
+          if (nodeEl !== hoverTarget) {
+            hoverTarget?.classList.remove('drop-candidate');
+            hoverTarget = nodeEl;
+            hoverTarget?.classList.add('drop-candidate');
+          }
+        }
+
+        const autopan = createEdgeAutopan(updateVisual);
+
+        function onMove(ev) {
+          updateVisual(ev.clientX, ev.clientY);
+          autopan.update(ev.clientX, ev.clientY);
+        }
+
+        function onUp(ev) {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          autopan.stop();
+          hoverTarget?.classList.remove('drop-candidate');
+          rubberBand.remove();
+
+          const nodeEl =
+            document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('g.node, g.cluster') ??
+            null;
+          const droppedId = nodeEl ? selectableIdFromElement(nodeEl) : null;
+          const currentId = which === 'start' ? entry.start : entry.end;
+
+          if (droppedId && droppedId !== currentId) {
+            beginEdit();
+            srcEl.value = rewriteEdgeEndpoint(srcEl.value, entry, which, droppedId);
+            clearSelection();
+            // Meant to swallow a synthetic click some browsers fire after a drag-drop like this
+            // — but that click isn't guaranteed (pointerdown was on the handle, pointerup lands
+            // wherever the pointer is, and browsers don't always synthesize one across different
+            // targets), so the flag can't be left waiting on it indefinitely: that just eats the
+            // next *real* click instead. Auto-clear it shortly after if nothing consumed it.
+            suppressNextClick = true;
+            clearTimeout(suppressNextClickTimeout);
+            suppressNextClickTimeout = setTimeout(() => {
+              suppressNextClick = false;
+            }, 300);
+            clearTimeout(debounceID);
+            renderDiagram().then(saveProject);
+          }
+        }
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+      }
+
+      async function addConnectedNode(sourceId) {
+        const existingIds = extractExistingIds(stripNotes(srcEl.value));
+        const newId = nextAutoId(existingIds, 'n');
+        const sep = srcEl.value.length && !srcEl.value.endsWith('\n') ? '\n' : '';
+        beginEdit();
+        // The new node gets its own declaration line, separate from the edge that
+        // connects it — so deleting just the edge later (removeEdgeSegment) never has
+        // to guess whether it's also this node's only declaration.
+        srcEl.value = `${srcEl.value}${sep}${shapeLine(SHAPES[0], newId, 'Node')}\n  ${sourceId} --> ${newId}\n`;
+        clearSelection();
+        clearTimeout(debounceID);
+        await renderDiagram();
+        centerOnNewElement(newId);
+        selectNode(newId);
+        saveProject();
+      }
+
+      async function linkExistingNodes(sourceId, targetId) {
+        const sep = srcEl.value.length && !srcEl.value.endsWith('\n') ? '\n' : '';
+        beginEdit();
+        srcEl.value = `${srcEl.value}${sep}  ${sourceId} --> ${targetId}\n`;
+        clearSelection();
+        clearTimeout(debounceID);
+        await renderDiagram();
+        saveProject();
+      }
+
+      // Dragging the "+" onto an existing node links source->that node (no new node
+      // created); dropping on empty canvas, or a plain click with no real movement,
+      // falls back to the old behavior of spawning a brand new connected node.
+      function startPlusDrag(e, sourceId) {
+        e.preventDefault();
+        const startClientX = e.clientX;
+        const startClientY = e.clientY;
+        const layer = selectionLayer();
+        const ns = 'http://www.w3.org/2000/svg';
+        const startPoint = clientToSvgPoint(currentSvg, startClientX, startClientY);
+        const rubberBand = document.createElementNS(ns, 'line');
+        rubberBand.setAttribute('x1', startPoint.x);
+        rubberBand.setAttribute('y1', startPoint.y);
+        rubberBand.setAttribute('x2', startPoint.x);
+        rubberBand.setAttribute('y2', startPoint.y);
+        rubberBand.setAttribute('stroke', SELECT_COLOR);
+        rubberBand.setAttribute('stroke-width', 2);
+        rubberBand.setAttribute('stroke-dasharray', '4 3');
+        rubberBand.style.pointerEvents = 'none';
+        rubberBand.hidden = true;
+        layer.appendChild(rubberBand);
+
+        let hoverTarget = null;
+        let dragging = false;
+        const DRAG_THRESHOLD = 5;
+
+        function updateVisual(clientX, clientY) {
+          rubberBand.hidden = false;
+          const p = clientToSvgPoint(currentSvg, clientX, clientY);
+          rubberBand.setAttribute('x2', p.x);
+          rubberBand.setAttribute('y2', p.y);
+
+          const nodeEl =
+            document.elementFromPoint(clientX, clientY)?.closest?.('g.node, g.cluster') ?? null;
+          const candidate = nodeEl && selectableIdFromElement(nodeEl) !== sourceId ? nodeEl : null;
+          if (candidate !== hoverTarget) {
+            hoverTarget?.classList.remove('drop-candidate');
+            hoverTarget = candidate;
+            hoverTarget?.classList.add('drop-candidate');
+          }
+        }
+
+        const autopan = createEdgeAutopan(updateVisual);
+
+        function onMove(ev) {
+          if (
+            !dragging &&
+            Math.hypot(ev.clientX - startClientX, ev.clientY - startClientY) < DRAG_THRESHOLD
+          ) {
+            return;
+          }
+          dragging = true;
+          updateVisual(ev.clientX, ev.clientY);
+          autopan.update(ev.clientX, ev.clientY);
+        }
+
+        function onUp(ev) {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          autopan.stop();
+          hoverTarget?.classList.remove('drop-candidate');
+          rubberBand.remove();
+
+          if (!dragging) {
+            addConnectedNode(sourceId);
+            return;
+          }
+
+          // Same as the edge-handle drag: pointerdown's preventDefault means a
+          // browser-synthesized click landing on real diagram content (not our
+          // overlay) isn't guaranteed, so don't leave the flag waiting on it forever.
+          suppressNextClick = true;
+          clearTimeout(suppressNextClickTimeout);
+          suppressNextClickTimeout = setTimeout(() => {
+            suppressNextClick = false;
+          }, 300);
+
+          const nodeEl =
+            document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('g.node, g.cluster') ??
+            null;
+          const droppedId = nodeEl ? selectableIdFromElement(nodeEl) : null;
+          if (droppedId && droppedId !== sourceId) {
+            linkExistingNodes(sourceId, droppedId);
+          }
+          // Dropped on empty canvas (or back on the source node) — a real drag that
+          // didn't land on a target does nothing, unlike a plain click.
+        }
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+      }
+
+      // Capture phase: hotpaths.ts calls stopPropagation() on node clicks (for its own
+      // pin-toggle), which would otherwise stop this from ever seeing the click — capturing
+      // ancestors run before that. Clicks on our own overlay (the "+" button, drag handles)
+      // are left alone so their own listeners get to run.
+      diagramEl.addEventListener(
+        'click',
+        (e) => {
+          if (suppressNextClick) {
+            suppressNextClick = false;
+            clearTimeout(suppressNextClickTimeout);
+            return;
+          }
+          if (e.target.closest?.('#selection-layer')) {
+            return;
+          }
+          const nodeEl = e.target.closest?.('g.node, g.cluster');
+          if (nodeEl) {
+            const nid = selectableIdFromElement(nodeEl);
+            if (nid) {
+              selectNode(nid);
+              return;
+            }
+          }
+          const hit = e.target.closest?.('.edge-hit-area');
+          if (hit) {
+            selectEdge(hit.dataset.forEdge);
+            return;
+          }
+          const edgeEl = e.target.closest?.('path.flowchart-link');
+          if (edgeEl) {
+            selectEdge(edgeEl.id);
+            return;
+          }
+          clearSelection();
+        },
+        true
+      );
+
+      // Double-click a node/subgraph to rename its label in place; double-click an edge
+      // to add/edit its label. Same capture-phase reasoning as the click listener above.
+      diagramEl.addEventListener(
+        'dblclick',
+        (e) => {
+          const nodeEl = e.target.closest?.('g.node, g.cluster');
+          if (nodeEl) {
+            const nid = selectableIdFromElement(nodeEl);
+            if (nid) {
+              e.stopPropagation();
+              startNodeLabelEdit(nid, nodeEl);
+            }
+            return;
+          }
+          const hit = e.target.closest?.('.edge-hit-area');
+          const edgeEl = e.target.closest?.('path.flowchart-link');
+          const domId = hit?.dataset.forEdge ?? edgeEl?.id;
+          if (domId) {
+            e.stopPropagation();
+            startEdgeLabelEdit(domId);
+          }
+        },
+        true
+      );
+
+      srcEl.addEventListener('input', scheduleAutosave);
+      nameEl.addEventListener('input', scheduleAutosave);
+
+      async function boot() {
+        const project = await getProject(id);
+        if (!project) {
+          window.location.href = './index.html';
+          return;
+        }
+        nameEl.value = project.name;
+        srcEl.value = project.code;
+        hotpathsEnabled = project.hotpathsEnabled ?? true;
+        applyHotpathsToggleUI();
+        if (project.layout === 'elk') {
+          layoutSelect.value = 'elk';
+          await ensureLayoutRegistered('elk');
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: 'loose',
+            theme: 'base',
+            themeVariables: THEME_VARIABLES,
+            flowchart: { curve: 'basis' },
+            layout: 'elk',
+          });
+        }
+        if (project.view) {
+          await renderDiagram();
+          panzoom.setView(project.view);
+        } else {
+          renderDiagram({ refit: true });
+        }
+      }
+
+      if (id) {
+        boot();
+      }
+    </script>
+  </body>
+</html>

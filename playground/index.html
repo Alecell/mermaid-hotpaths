@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mermaid Projects</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --panel-hover: #1d212b;
+        --border: #2a2f3a;
+        --text: #e6e9ef;
+        --muted: #9aa3b2;
+        --accent: #6ea8fe;
+        --danger: #ff8585;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+      header {
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      header h1 {
+        font-size: 16px;
+        margin: 0;
+        font-weight: 650;
+      }
+      header nav {
+        display: flex;
+        gap: 14px;
+        margin-left: auto;
+        font-size: 13px;
+      }
+      header nav a {
+        color: var(--muted);
+        text-decoration: none;
+      }
+      header nav a:hover {
+        color: var(--accent);
+      }
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 28px 20px 60px;
+      }
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .toolbar h2 {
+        font-size: 14px;
+        color: var(--muted);
+        font-weight: 600;
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      button {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 7px 14px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--accent);
+        color: #0b1020;
+        border-color: var(--accent);
+        font-weight: 600;
+        margin-left: auto;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        text-decoration: none;
+        color: inherit;
+        display: flex;
+        flex-direction: column;
+        transition: border-color 0.15s ease;
+        position: relative;
+      }
+      .card:hover {
+        border-color: var(--accent);
+        background: var(--panel-hover);
+      }
+      .card .preview {
+        height: 140px;
+        background: #0c0e13;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        padding: 10px;
+      }
+      .card .preview svg {
+        max-width: 100%;
+        max-height: 100%;
+      }
+      .card .preview .placeholder {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .card .meta {
+        padding: 10px 12px;
+        border-top: 1px solid var(--border);
+      }
+      .card .name {
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .card .updated {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .card .delete {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        line-height: 1;
+        border-radius: 5px;
+        color: var(--muted);
+        opacity: 0;
+        transition: opacity 0.15s ease;
+      }
+      .card:hover .delete {
+        opacity: 1;
+      }
+      .card .delete:hover {
+        color: var(--danger);
+        border-color: var(--danger);
+      }
+      .empty {
+        color: var(--muted);
+        font-size: 13px;
+        padding: 40px 0;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Mermaid Projects</h1>
+      <nav>
+        <a href="./hotpaths.html">Hotpaths syntax demo ↗</a>
+      </nav>
+    </header>
+    <main>
+      <div class="toolbar">
+        <h2>Your projects</h2>
+        <button id="export-projects">Export JSON</button>
+        <button id="import-projects">Import JSON</button>
+        <input type="file" id="import-file" accept="application/json" hidden />
+        <button class="primary" id="new-project">+ New project</button>
+      </div>
+      <div class="grid" id="grid"></div>
+      <div class="empty" id="empty" hidden>No projects yet. Create one to get started.</div>
+    </main>
+
+    <script type="module">
+      import mermaid from './mermaid.esm.mjs';
+      import {
+        listProjects,
+        createProject as storeCreateProject,
+        deleteProject as storeDeleteProject,
+        downloadProjectsBackup,
+        importProjectsFromJson,
+      } from './projectStore.js';
+
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'loose',
+        theme: 'dark',
+        flowchart: { curve: 'basis' },
+      });
+
+      const gridEl = document.getElementById('grid');
+      const emptyEl = document.getElementById('empty');
+
+      function relativeTime(iso) {
+        const diffMs = Date.now() - new Date(iso).getTime();
+        const minutes = Math.round(diffMs / 60000);
+        if (minutes < 1) return 'agora mesmo';
+        if (minutes < 60) return `há ${minutes}min`;
+        const hours = Math.round(minutes / 60);
+        if (hours < 24) return `há ${hours}h`;
+        const days = Math.round(hours / 24);
+        return `há ${days}d`;
+      }
+
+      async function createProject() {
+        const project = await storeCreateProject({
+          name: 'Untitled',
+          code: 'flowchart TD\n  A --> B',
+        });
+        window.location.href = `./editor.html?id=${project.id}`;
+      }
+
+      async function deleteProject(id, cardEl) {
+        if (!confirm('Apagar este projeto? Essa ação não pode ser desfeita.')) return;
+        await storeDeleteProject(id);
+        cardEl.remove();
+        if (!gridEl.children.length) {
+          emptyEl.hidden = false;
+        }
+      }
+
+      function buildCard(project) {
+        const card = document.createElement('a');
+        card.className = 'card';
+        card.href = `./editor.html?id=${project.id}`;
+
+        const preview = document.createElement('div');
+        preview.className = 'preview';
+        preview.innerHTML = '<span class="placeholder">renderizando…</span>';
+        card.appendChild(preview);
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        const name = document.createElement('div');
+        name.className = 'name';
+        name.textContent = project.name;
+        const updated = document.createElement('div');
+        updated.className = 'updated';
+        updated.textContent = `atualizado ${relativeTime(project.updatedAt)}`;
+        meta.appendChild(name);
+        meta.appendChild(updated);
+        card.appendChild(meta);
+
+        const del = document.createElement('button');
+        del.className = 'delete';
+        del.textContent = '×';
+        del.title = 'Apagar';
+        del.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          deleteProject(project.id, card);
+        });
+        card.appendChild(del);
+
+        mermaid
+          .render(`proj-${project.id}`, project.code)
+          .then(({ svg }) => {
+            preview.innerHTML = svg;
+          })
+          .catch(() => {
+            preview.innerHTML = '<span class="placeholder">sem preview</span>';
+          });
+
+        return card;
+      }
+
+      async function boot() {
+        const projects = await listProjects();
+        emptyEl.hidden = projects.length > 0;
+        for (const project of projects) {
+          gridEl.appendChild(buildCard(project));
+        }
+      }
+
+      document.getElementById('new-project').addEventListener('click', createProject);
+      document.getElementById('export-projects').addEventListener('click', () => {
+        downloadProjectsBackup();
+      });
+      const importFileEl = document.getElementById('import-file');
+      document.getElementById('import-projects').addEventListener('click', () => {
+        importFileEl.click();
+      });
+      importFileEl.addEventListener('change', async () => {
+        const file = importFileEl.files?.[0];
+        if (!file) return;
+        try {
+          await importProjectsFromJson(await file.text());
+          window.location.reload();
+        } catch (e) {
+          alert(`Falha ao importar: ${e?.message ?? e}`);
+        } finally {
+          importFileEl.value = '';
+        }
+      });
+      boot();
+    </script>
+  </body>
+</html>

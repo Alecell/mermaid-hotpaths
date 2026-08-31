@@ -1,0 +1,107 @@
+import type { ShapeID } from '../../rendering-util/rendering-elements/shapes.js';
+
+/**
+ * Valid `type` args to `yy.addVertex` taken from
+ * `packages/mermaid/src/diagrams/flowchart/parser/flow.jison`
+ */
+export type FlowVertexTypeParam =
+  | undefined
+  | 'square'
+  | 'doublecircle'
+  | 'circle'
+  | 'ellipse'
+  | 'stadium'
+  | 'subroutine'
+  | 'rect'
+  | 'cylinder'
+  | 'round'
+  | 'diamond'
+  | 'hexagon'
+  | 'odd'
+  | 'trapezoid'
+  | 'inv_trapezoid'
+  | 'lean_right'
+  | 'lean_left';
+
+export interface FlowVertex {
+  classes: string[];
+  dir?: string;
+  domId: string;
+  haveCallback?: boolean;
+  id: string;
+  labelType: 'markdown' | 'string' | 'text';
+  link?: string;
+  linkTarget?: string;
+  props?: any;
+  styles: string[];
+  text?: string;
+  type?: ShapeID | FlowVertexTypeParam;
+  icon?: string;
+  form?: string;
+  pos?: 't' | 'b';
+  img?: string;
+  assetWidth?: number;
+  assetHeight?: number;
+  defaultWidth?: number;
+  imageAspectRatio?: number;
+  constraint?: 'on' | 'off';
+  hotpath?: FlowVertexHotpath;
+}
+
+/** Hotpaths: a trigger declared by a node, with the color its members glow in. */
+export interface FlowHotpathTrigger {
+  name: string;
+  color?: string;
+}
+
+/** Hotpaths: per-node trigger membership extracted from `@{ ... }` metadata. */
+export interface FlowVertexHotpath {
+  /** Triggers this node owns — hovering/clicking the node activates these. */
+  declares: FlowHotpathTrigger[];
+  /** Triggers this node passively listens to. */
+  listens: string[];
+}
+
+export interface FlowText {
+  text: string;
+  type: 'text';
+}
+
+export interface FlowEdge {
+  isUserDefinedId: boolean;
+  start: string;
+  end: string;
+  interpolate?: string;
+  type?: string;
+  stroke?: 'normal' | 'thick' | 'invisible' | 'dotted';
+  style?: string[];
+  length?: number;
+  text: string;
+  labelType: 'markdown' | 'string' | 'text';
+  classes: string[];
+  id?: string;
+  animation?: 'fast' | 'slow';
+  animate?: boolean;
+}
+
+export interface FlowClass {
+  id: string;
+  styles: string[];
+  textStyles: string[];
+}
+
+export interface FlowSubGraph {
+  classes: string[];
+  dir?: string;
+  id: string;
+  labelType: string;
+  nodes: string[];
+  title: string;
+}
+
+export interface FlowLink {
+  length?: number;
+  stroke: string;
+  type: string;
+  text?: string;
+}

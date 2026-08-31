@@ -1,0 +1,10 @@
+node_modules
+dist
+site
+stats
+*.log
+.env
+.eslintcache
+
+# local playground project saves when running `pnpm dev` (one JSON file per project)
+/playground-data/
