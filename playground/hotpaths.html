@@ -154,24 +154,24 @@
     <header>
       <h1>Mermaid Hotpaths</h1>
       <span class="legend">
-        <strong>hover</strong> num nó-fonte = preview · <strong>click</strong> = fixa (pin) ·
-        <kbd>Esc</kbd> / click no vazio = limpa
+        <strong>hover</strong> a source node = preview · <strong>click</strong> = pin ·
+        <kbd>Esc</kbd> / click empty space = clear
       </span>
     </header>
     <main>
       <div class="left">
         <div class="controls">
-          <select id="examples" title="Exemplos"></select>
+          <select id="examples" title="Examples"></select>
           <button class="primary" id="render">
             Render ▸ <span style="opacity: 0.7">Ctrl+Enter</span>
           </button>
         </div>
         <textarea id="src" spellcheck="false"></textarea>
         <div class="hint">
-          Cole qualquer chart mermaid. Um nó declara trigger com
-          <code>@{ trigger: nome, color: "#hex" }</code> (ou vários:
-          <code>@{ triggers: ["a:#hex", "b:#hex"] }</code>) e outros escutam com
-          <code>@{ listen: [nome, ...] }</code>. Arestas entre membros acendem sozinhas.
+          Paste any Mermaid chart. A node declares a trigger with
+          <code>@{ trigger: name, color: "#hex" }</code> (or several:
+          <code>@{ triggers: ["a:#hex", "b:#hex"] }</code>) and others listen with
+          <code>@{ listen: [name, ...] }</code>. Edges between members light up on their own.
         </div>
       </div>
       <div class="stage">
@@ -199,15 +199,15 @@
       });
 
       const EXAMPLES = {
-        'Trigger único + listeners': `flowchart TD
+        'Single trigger + listeners': `flowchart TD
   A@{ trigger: after-call, color: "#e53935" }
   B@{ listen: [after-call] }
   C@{ listen: [after-call] }
-  D[outro nó qualquer]
+  D[some other node]
   A --> B --> C
   A --> D`,
 
-        'Dois triggers no mesmo nó-fonte (glow duplo)': `flowchart LR
+        'Two triggers on the same source node (dual glow)': `flowchart LR
   S@{ triggers: ["success:#43a047", "retry:#1e88e5"] }
   P@{ listen: [success] }
   Q@{ listen: [retry] }
@@ -216,7 +216,7 @@
   S --> Q --> Z
   Z --> END[done]`,
 
-        'Vários triggers independentes': `flowchart TD
+        'Several independent triggers': `flowchart TD
   Login@{ trigger: auth, color: "#8e24aa" }
   Cron@{ trigger: job, color: "#fb8c00" }
   Token@{ listen: [auth] }
@@ -226,7 +226,7 @@
   Login --> Token --> Session --> Worker
   Cron --> Queue --> Worker`,
 
-        'Chart normal (sem feature)': `flowchart LR
+        'Regular chart (no feature)': `flowchart LR
   A[Start] --> B{Choice}
   B -->|yes| C[Do it]
   B -->|no| D[Skip]

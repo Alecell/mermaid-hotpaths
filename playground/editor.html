@@ -574,7 +574,7 @@
       <a class="back" href="./index.html">← Projects</a>
       <input id="name" spellcheck="false" />
       <nav>
-        <button id="notes-panel-open">Notas</button>
+        <button id="notes-panel-open">Notes</button>
       </nav>
     </header>
     <main>
@@ -587,7 +587,7 @@
           <button
             id="hotpaths-toggle"
             type="button"
-            title="Liga/desliga o hover e clique dos hotpaths"
+            title="Toggle hotpaths hover/click"
           >
             Hotpaths: On
           </button>
@@ -686,8 +686,8 @@
       </div>
       <div class="notes-panel" id="notes-panel" hidden>
         <div class="notes-panel-header">
-          <span>Notas</span>
-          <button id="notes-panel-close" title="Fechar">✕</button>
+          <span>Notes</span>
+          <button id="notes-panel-close" title="Close">✕</button>
         </div>
         <div class="notes-view" id="notes-view"></div>
       </div>
@@ -878,7 +878,7 @@
 
       async function saveProject() {
         statusEl.classList.remove('error');
-        statusEl.textContent = 'salvando…';
+        statusEl.textContent = 'saving…';
         try {
           await updateProject(id, {
             name: nameEl.value,
@@ -887,10 +887,10 @@
             layout: layoutSelect.value,
             hotpathsEnabled,
           });
-          statusEl.textContent = 'salvo';
+          statusEl.textContent = 'saved';
         } catch (e) {
           statusEl.classList.add('error');
-          statusEl.textContent = 'erro ao salvar';
+          statusEl.textContent = 'save failed';
         }
       }
 
@@ -939,7 +939,7 @@
       function scheduleAutosave() {
         clearTimeout(debounceID);
         statusEl.classList.remove('error');
-        statusEl.textContent = 'editando…';
+        statusEl.textContent = 'editing…';
         debounceID = setTimeout(() => {
           renderDiagram();
           saveProject();
@@ -947,7 +947,7 @@
       }
 
       // Pan/zoom alone (no text edit) doesn't otherwise trigger a save — debounced
-      // separately, and without the "editando…" status flicker, since panning around
+      // separately, and without the "editing…" status flicker, since panning around
       // isn't editing the diagram.
       let viewDebounceID;
       function scheduleViewSave() {
@@ -1986,7 +1986,7 @@
       });
 
       function noteKindLabel(kind) {
-        return kind === 'node' ? 'Nó' : kind === 'subgraph' ? 'Subgraph' : 'Aresta';
+        return kind === 'node' ? 'Node' : kind === 'subgraph' ? 'Subgraph' : 'Edge';
       }
 
       /**
@@ -2062,7 +2062,7 @@
           const p = document.createElement('p');
           p.className = 'notes-empty';
           p.textContent =
-            'Nenhuma nota ainda. Selecione um nó, aresta ou subgraph e clique em "Nota" pra criar uma.';
+            'No notes yet. Select a node, edge, or subgraph and click "Add note" to create one.';
           notesViewEl.appendChild(p);
           return;
         }
@@ -2108,11 +2108,11 @@
 
         const header = document.createElement('div');
         header.className = 'notes-detail-header';
-        header.textContent = `${noteKindLabel(target.kind)} · ${target.id ?? '(nova nota)'}`;
+        header.textContent = `${noteKindLabel(target.kind)} · ${target.id ?? '(new note)'}`;
 
         const textarea = document.createElement('textarea');
         textarea.className = 'notes-textarea';
-        textarea.placeholder = 'Escreva uma nota para este elemento…';
+        textarea.placeholder = 'Write a note for this element…';
         textarea.value = target.id ? (notes.get(`${target.kind}:${target.id}`) ?? '') : '';
 
         // A successful commit re-renders this whole panel (renderNotesView wipes
@@ -2131,7 +2131,7 @@
         const actions = document.createElement('div');
         actions.className = 'notes-detail-actions';
         const removeBtn = document.createElement('button');
-        removeBtn.textContent = 'Remover nota';
+        removeBtn.textContent = 'Remove note';
         removeBtn.hidden = !textarea.value;
         removeBtn.addEventListener('click', () => {
           textarea.value = '';

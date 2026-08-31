@@ -219,12 +219,12 @@
       function relativeTime(iso) {
         const diffMs = Date.now() - new Date(iso).getTime();
         const minutes = Math.round(diffMs / 60000);
-        if (minutes < 1) return 'agora mesmo';
-        if (minutes < 60) return `há ${minutes}min`;
+        if (minutes < 1) return 'just now';
+        if (minutes < 60) return `${minutes}min ago`;
         const hours = Math.round(minutes / 60);
-        if (hours < 24) return `há ${hours}h`;
+        if (hours < 24) return `${hours}h ago`;
         const days = Math.round(hours / 24);
-        return `há ${days}d`;
+        return `${days}d ago`;
       }
 
       async function createProject() {
@@ -236,7 +236,7 @@
       }
 
       async function deleteProject(id, cardEl) {
-        if (!confirm('Apagar este projeto? Essa ação não pode ser desfeita.')) return;
+        if (!confirm('Delete this project? This action cannot be undone.')) return;
         await storeDeleteProject(id);
         cardEl.remove();
         if (!gridEl.children.length) {
@@ -251,7 +251,7 @@
 
         const preview = document.createElement('div');
         preview.className = 'preview';
-        preview.innerHTML = '<span class="placeholder">renderizando…</span>';
+        preview.innerHTML = '<span class="placeholder">rendering…</span>';
         card.appendChild(preview);
 
         const meta = document.createElement('div');
@@ -261,7 +261,7 @@
         name.textContent = project.name;
         const updated = document.createElement('div');
         updated.className = 'updated';
-        updated.textContent = `atualizado ${relativeTime(project.updatedAt)}`;
+        updated.textContent = `updated ${relativeTime(project.updatedAt)}`;
         meta.appendChild(name);
         meta.appendChild(updated);
         card.appendChild(meta);
@@ -269,7 +269,7 @@
         const del = document.createElement('button');
         del.className = 'delete';
         del.textContent = '×';
-        del.title = 'Apagar';
+        del.title = 'Delete';
         del.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -283,7 +283,7 @@
             preview.innerHTML = svg;
           })
           .catch(() => {
-            preview.innerHTML = '<span class="placeholder">sem preview</span>';
+            preview.innerHTML = '<span class="placeholder">no preview</span>';
           });
 
         return card;
