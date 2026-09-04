@@ -554,6 +554,15 @@ const render = async function (
       removeTempElements();
     } else {
       errorRenderer.draw(text, id, injected.version);
+      // Only tear the temp element down when it was our own scratch element,
+      // appended straight to <body> with nothing else referencing it (the plain
+      // `mermaid.render(id, text)` call, no container). When the caller passed
+      // `svgContainingElement`, that same element is nested *inside* it — that's
+      // the mechanism `mermaid.run()` relies on to leave the bomb icon showing
+      // in place of a `.mermaid` block that failed to render, so it must stay.
+      if (svgContainingElement === undefined) {
+        removeTempElements();
+      }
     }
     throw e;
   }
@@ -588,6 +597,14 @@ const render = async function (
   attachFunctions();
 
   if (parseEncounteredException) {
+    // Same reasoning as the draw-error catch above: only clean up our own <body>-
+    // appended scratch element (no `svgContainingElement`) — otherwise it's left
+    // behind indefinitely, since the next render uses a fresh id and only ever
+    // removes *its own* leftover element, never a prior failed render's. When a
+    // container was passed, leave it — that's the inline bomb icon staying in place.
+    if (svgContainingElement === undefined) {
+      removeTempElements();
+    }
     throw parseEncounteredException;
   }
 

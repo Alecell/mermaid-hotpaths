@@ -1642,8 +1642,17 @@
        * covers the rarer case of a subgraph with no title at all yet (`subgraph s1` with
        * no trailing `[...]`), which isn't a node declaration `findNodeDeclaration` would
        * ever match.
+       *
+       * A blank `newLabel` (cleared the text and left it empty) falls back to the same
+       * placeholder new elements of this kind already get — mermaid's flowchart grammar
+       * has no valid way to write an empty quoted label (`id[""]` fails to parse: the
+       * lexer's STR rule requires at least one character between the quotes), so writing
+       * it through verbatim would turn a harmless "cleared the text" into a syntax error.
        */
       async function renameLabel(id, kind, newLabel, reselect = true) {
+        if (!newLabel.trim()) {
+          newLabel = kind === 'subgraph' ? 'Untitled subgraph' : 'Node';
+        }
         const decl = findNodeDeclaration(srcEl.value, id);
         beginEdit();
         if (decl) {
