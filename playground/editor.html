@@ -242,6 +242,16 @@
         width: 16px;
         height: 16px;
       }
+      .move-menu {
+        width: 216px;
+        max-height: 280px;
+        overflow: auto;
+      }
+      .move-menu-empty {
+        padding: 6px 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
       .element-toolbar[hidden] {
         display: none;
       }
@@ -728,6 +738,20 @@
               <rect x="7" y="9" width="10" height="7" rx="1" />
             </svg>
           </button>
+          <button id="et-move-btn" title="Move into a subgraph">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="12" y="4" width="9" height="16" rx="2" stroke-dasharray="3 2" />
+              <line x1="3" y1="12" x2="14" y2="12" />
+              <path d="M10 8 L15 12 L10 16" />
+            </svg>
+          </button>
           <button id="et-arrow-btn" title="Change arrow type" hidden>
             <svg
               viewBox="0 0 24 24"
@@ -793,6 +817,7 @@
             <span>Subgraph</span>
           </button>
         </div>
+        <div class="plus-menu move-menu" id="move-menu" hidden></div>
         <input id="inline-label-editor" class="inline-label-editor" hidden spellcheck="false" />
       </div>
       <div class="notes-panel" id="notes-panel" hidden>
@@ -851,6 +876,9 @@
         convertNodeToSubgraph,
         deleteSubgraphFromSource,
         pruneEmptySubgraphs,
+        listSubgraphs,
+        idsInsideSubgraph,
+        moveIntoSubgraph,
       } from './subgraphs.js';
       import {
         parseNotes,
@@ -1200,6 +1228,9 @@
         if (!plusMenu.hidden && !plusMenu.contains(e.target)) {
           closePlusMenu();
         }
+        if (!moveMenu.hidden && !moveMenu.contains(e.target) && !etMoveBtn.contains(e.target)) {
+          moveMenu.hidden = true;
+        }
       });
 
       subgraphBtn.addEventListener('click', () => openModal({ kind: 'subgraph' }));
@@ -1274,6 +1305,26 @@
           width: Math.abs(p2.x - p1.x),
           height: Math.abs(p2.y - p1.y),
         };
+      }
+
+      /**
+       * Pans so a client-space point sits comfortably inside the canvas, and reports
+       * whether it had to. A no-op when the point is already well within view — the whole
+       * canvas shouldn't lurch for something you're already looking at.
+       */
+      function ensurePointVisible(clientX, clientY, margin = 100) {
+        const rect = viewportEl.getBoundingClientRect();
+        const alreadyVisible =
+          clientX > rect.left + margin &&
+          clientX < rect.right - margin &&
+          clientY > rect.top + margin &&
+          clientY < rect.bottom - margin;
+        if (alreadyVisible) {
+          return false;
+        }
+        const content = panzoom.clientToContent(clientX, clientY);
+        panzoom.centerOnPoint(content.x, content.y);
+        return true;
       }
 
       /** Pan the canvas so a node/subgraph is centered, keeping the current zoom. */
@@ -1364,6 +1415,8 @@
       const elementToolbar = document.getElementById('element-toolbar');
       const etShapeBtn = document.getElementById('et-shape-btn');
       const etSubgraphBtn = document.getElementById('et-subgraph-btn');
+      const etMoveBtn = document.getElementById('et-move-btn');
+      const moveMenu = document.getElementById('move-menu');
       const etArrowBtn = document.getElementById('et-arrow-btn');
       const etCodeBtn = document.getElementById('et-code-btn');
       const etNoteBtn = document.getElementById('et-note-btn');
@@ -1635,6 +1688,7 @@
       function hideElementToolbar() {
         elementToolbar.hidden = true;
         arrowPopover.hidden = true;
+        moveMenu.hidden = true;
         closePlusMenu();
         if (shapePopoverMode === 'change') {
           shapePopover.hidden = true;
@@ -1651,6 +1705,8 @@
         const isCluster = el.classList.contains('cluster');
         etShapeBtn.hidden = isCluster;
         etSubgraphBtn.hidden = isCluster;
+        // Both nodes and subgraphs can be re-parented.
+        etMoveBtn.hidden = false;
         etArrowBtn.hidden = true;
         etCodeBtn.hidden = false;
         const rect = el.getBoundingClientRect();
@@ -1665,6 +1721,7 @@
         const entry = currentEdgeIndex.get(domId);
         etShapeBtn.hidden = true;
         etSubgraphBtn.hidden = true;
+        etMoveBtn.hidden = true;
         etArrowBtn.hidden = !entry?.arrowSpan;
         etCodeBtn.hidden = entry?.lineIndex == null;
         const segments = edgeSegmentGroup(pathEl);
@@ -1711,6 +1768,9 @@
         }
         if (!arrowPopover.hidden) {
           openFloatingPopover(arrowPopover, etArrowBtn);
+        }
+        if (!moveMenu.hidden) {
+          openFloatingPopover(moveMenu, etMoveBtn);
         }
       }
 
@@ -1833,6 +1893,70 @@
         await renderDiagram();
         selectNode(nodeId);
         saveProject();
+      }
+
+      /**
+       * Re-parents an element (into `targetId`, or out to the root when null) and leaves it
+       * selected and centered. Changing container re-lays out the entire diagram, so "where
+       * did it end up?" is a question worth answering rather than making the user hunt.
+       */
+      async function moveElementInto(id, targetId) {
+        const next = moveIntoSubgraph(srcEl.value, id, targetId);
+        if (next === srcEl.value) {
+          return; // nothing to do: same parent, or a move that isn't allowed
+        }
+        beginEdit();
+        srcEl.value = next;
+        clearTimeout(debounceID);
+        await renderDiagram();
+        centerOnElement(id);
+        selectNode(id);
+        saveProject();
+      }
+
+      /**
+       * Where the selected element could move to: every subgraph except itself, its own
+       * descendants and the one it's already in — plus the root, when it isn't there
+       * already.
+       */
+      function moveTargetsFor(id) {
+        const stripped = stripNotes(srcEl.value);
+        const parent = findEnclosingSubgraph(stripped, id);
+        const descendants = idsInsideSubgraph(srcEl.value, id);
+        const subgraphs = listSubgraphs(stripped).filter(
+          (candidate) =>
+            candidate.id !== id && candidate.id !== parent && !descendants.has(candidate.id)
+        );
+        return parent === null
+          ? subgraphs
+          : [{ id: null, title: 'Root (no subgraph)', depth: 0 }, ...subgraphs];
+      }
+
+      function openMoveMenu() {
+        if (!selection || selection.kind !== 'node') {
+          return;
+        }
+        const targets = moveTargetsFor(selection.id);
+        moveMenu.innerHTML = '';
+        if (targets.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'move-menu-empty';
+          empty.textContent = 'Nowhere else to move this to.';
+          moveMenu.appendChild(empty);
+        }
+        for (const target of targets) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = target.title;
+          // Nesting shown by indentation, so a deep target reads as what it is.
+          btn.style.paddingLeft = `${12 + target.depth * 12}px`;
+          btn.addEventListener('click', () => {
+            moveMenu.hidden = true;
+            moveElementInto(selection.id, target.id);
+          });
+          moveMenu.appendChild(btn);
+        }
+        openFloatingPopover(moveMenu, etMoveBtn);
       }
 
       /** The suffix mermaid's own dom id for this edge ends in — its explicit id if it has
@@ -2028,11 +2152,13 @@
         const labelEl = currentSvg.querySelector(
           `g.label[data-id="${CSS.escape(edgeIdSuffix(entry))}"]`
         );
-        const labelRect = labelEl?.getBoundingClientRect();
-        let rect;
-        if (labelRect && labelRect.width > 0) {
-          rect = labelRect;
-        } else {
+        // Where the editor has to float, measured fresh each time it's needed: panning to
+        // bring it into view (below) moves everything it's measured against.
+        function anchorRect() {
+          const labelRect = labelEl?.getBoundingClientRect();
+          if (labelRect && labelRect.width > 0) {
+            return labelRect;
+          }
           // No real label to anchor on yet — either there's no rendered label group at
           // all (self-loops don't carry this data-id), or there is one but it's empty:
           // mermaid leaves a label-less edge's label group untransformed at the SVG's
@@ -2042,10 +2168,17 @@
           const mid = segments[Math.floor(segments.length / 2)];
           const pt = mid.getPointAtLength(mid.getTotalLength() / 2);
           const client = svgPointToClient(currentSvg, pt.x, pt.y);
-          rect = { x: client.x, y: client.y, width: 0, height: 0 };
+          return { x: client.x, y: client.y, width: 0, height: 0 };
         }
+
+        // An edge's label sits at its midpoint, which on a long edge in a big chart can be
+        // an entire screen away from the end you just double-clicked — the editor would
+        // open somewhere off-canvas, invisible. Go to it.
+        const initial = anchorRect();
+        ensurePointVisible(initial.x + initial.width / 2, initial.y + initial.height / 2);
+
         selectEdge(domId);
-        openInlineLabelEditor(rect, currentText, (newLabel, { viaEnter }) => {
+        openInlineLabelEditor(anchorRect(), currentText, (newLabel, { viaEnter }) => {
           renameEdgeLabel(entry, newLabel, viaEnter);
         });
       }
@@ -2497,6 +2630,15 @@
         convertSelectionToSubgraph();
       });
 
+      etMoveBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (moveMenu.hidden) {
+          openMoveMenu();
+        } else {
+          moveMenu.hidden = true;
+        }
+      });
+
       etArrowBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         openArrowPopoverForSelection();
@@ -2831,6 +2973,25 @@
         return { update, stop };
       }
 
+      /**
+       * The topmost node/subgraph at a screen point, looking *through* the overlays this
+       * file draws on top of the diagram — chiefly the invisible 14px-wide edge click
+       * targets, which criss-cross a group's interior and would otherwise swallow every
+       * drop aimed at it.
+       */
+      function elementUnderPoint(clientX, clientY) {
+        for (const el of document.elementsFromPoint(clientX, clientY)) {
+          if (el.closest?.('#selection-layer') || el.classList?.contains('edge-hit-area')) {
+            continue;
+          }
+          const match = el.closest?.('g.node, g.cluster');
+          if (match) {
+            return match;
+          }
+        }
+        return null;
+      }
+
       function startHandleDrag(e, entry, which, fixedPoint) {
         e.stopPropagation();
         e.preventDefault();
@@ -2860,8 +3021,7 @@
           rubberBand.setAttribute('x2', p.x);
           rubberBand.setAttribute('y2', p.y);
 
-          const nodeEl =
-            document.elementFromPoint(clientX, clientY)?.closest?.('g.node, g.cluster') ?? null;
+          const nodeEl = elementUnderPoint(clientX, clientY);
           if (nodeEl !== hoverTarget) {
             hoverTarget?.classList.remove('drop-candidate');
             hoverTarget = nodeEl;
@@ -2884,9 +3044,7 @@
           rubberBand.remove();
           unscaleRubberBand();
 
-          const nodeEl =
-            document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('g.node, g.cluster') ??
-            null;
+          const nodeEl = elementUnderPoint(ev.clientX, ev.clientY);
           const droppedId = nodeEl ? selectableIdFromElement(nodeEl) : null;
           const currentId = which === 'start' ? entry.start : entry.end;
 
@@ -2995,8 +3153,7 @@
           rubberBand.setAttribute('x2', p.x);
           rubberBand.setAttribute('y2', p.y);
 
-          const nodeEl =
-            document.elementFromPoint(clientX, clientY)?.closest?.('g.node, g.cluster') ?? null;
+          const nodeEl = elementUnderPoint(clientX, clientY);
           const candidate = nodeEl && selectableIdFromElement(nodeEl) !== sourceId ? nodeEl : null;
           if (candidate !== hoverTarget) {
             hoverTarget?.classList.remove('drop-candidate');
@@ -3044,9 +3201,7 @@
             suppressNextClick = false;
           }, 300);
 
-          const nodeEl =
-            document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('g.node, g.cluster') ??
-            null;
+          const nodeEl = elementUnderPoint(ev.clientX, ev.clientY);
           const droppedId = nodeEl ? selectableIdFromElement(nodeEl) : null;
           if (droppedId && droppedId !== sourceId) {
             linkExistingNodes(sourceId, droppedId);
@@ -3122,33 +3277,71 @@
         true
       );
 
-      // --- Drag a node into the open note to reference it (`@id`) ---
+      // --- Drag an element: into a subgraph to nest it, or into the open note to cite it ---
       const dragChip = document.getElementById('drag-chip');
 
       /**
-       * Dragging a node/subgraph from the canvas onto the open note writes its id into the
-       * text as an `@id` reference — the alternative being to read the id off the diagram
-       * and type it out by hand. Hangs off a plain pointerdown on the element (nothing else
-       * on the canvas drags a node) and only engages once the pointer has actually moved,
-       * so a normal click still just selects, and a drag that ends anywhere but on the note
-       * does nothing at all.
+       * One gesture, two possible drops. Dragging a node or subgraph onto another subgraph
+       * nests it there; dragging it onto the open note writes an `@id` reference into the
+       * text. Both hang off a plain pointerdown on the element (nothing else on the canvas
+       * drags one) and only engage once the pointer has really moved, so a normal click
+       * still just selects, and a drag that lands on neither target does nothing at all.
        */
-      function startNoteRefDrag(e, id) {
-        if (notesPanelEl.hidden || !activeNote) {
-          return;
-        }
+      function startElementDrag(e, id) {
         // Canceling pointerdown suppresses the compatibility mousedown, and with it the
         // focus change it would cause. That matters more than it sounds: moving focus off
         // the note's textarea fires its blur, which commits the note and re-renders the
-        // diagram — tearing down the very editor this drag is aiming at, mid-gesture.
+        // diagram — tearing down the very editor a note drag is aiming at, mid-gesture.
         e.preventDefault();
         const startX = e.clientX;
         const startY = e.clientY;
         let dragging = false;
+        let hoverCluster = null;
+
+        // Read once: which subgraph this element is already in, and what lives inside it —
+        // a subgraph can't be dropped into itself or into its own descendants.
+        const strippedSource = stripNotes(srcEl.value);
+        const currentParent = findEnclosingSubgraph(strippedSource, id);
+        const ownDescendants = idsInsideSubgraph(srcEl.value, id);
 
         function overNoteEditor(clientX, clientY) {
           const under = document.elementFromPoint(clientX, clientY);
           return !!under && !!activeNote?.editor.contains(under);
+        }
+
+        /** The subgraph element a drop here would nest into, or null. */
+        function clusterUnder(clientX, clientY) {
+          const under = elementUnderPoint(clientX, clientY);
+          let clusterEl = under?.classList.contains('cluster') ? under : null;
+          if (!clusterEl && under) {
+            // Dropping onto a node that sits in a group reads as "into that group" — a
+            // group's own background is often a sliver behind its members.
+            const overId = nodeIdFromElement(under);
+            const parentOfHovered =
+              overId && overId !== id ? findEnclosingSubgraph(strippedSource, overId) : null;
+            clusterEl = parentOfHovered ? findElementForId(currentSvg, parentOfHovered) : null;
+          }
+          const targetId = clusterEl ? clusterIdFromElement(clusterEl) : null;
+          if (!targetId || targetId === id || targetId === currentParent) {
+            return null;
+          }
+          return ownDescendants.has(targetId) ? null : clusterEl;
+        }
+
+        function updateVisual(clientX, clientY) {
+          dragChip.hidden = false;
+          dragChip.style.left = `${clientX + 12}px`;
+          dragChip.style.top = `${clientY + 12}px`;
+          const onNote = overNoteEditor(clientX, clientY);
+          dragChip.textContent = onNote ? `@${id}` : id;
+          activeNote?.editor.classList.toggle('drop-target', onNote);
+
+          const candidate = onNote ? null : clusterUnder(clientX, clientY);
+          if (candidate !== hoverCluster) {
+            hoverCluster?.classList.remove('drop-candidate');
+            hoverCluster = candidate;
+            hoverCluster?.classList.add('drop-candidate');
+          }
         }
 
         function onMove(ev) {
@@ -3156,14 +3349,7 @@
             return;
           }
           dragging = true;
-          dragChip.hidden = false;
-          dragChip.textContent = `@${id}`;
-          dragChip.style.left = `${ev.clientX + 12}px`;
-          dragChip.style.top = `${ev.clientY + 12}px`;
-          activeNote?.editor.classList.toggle(
-            'drop-target',
-            overNoteEditor(ev.clientX, ev.clientY)
-          );
+          updateVisual(ev.clientX, ev.clientY);
         }
 
         function onUp(ev) {
@@ -3171,19 +3357,27 @@
           window.removeEventListener('pointerup', onUp);
           dragChip.hidden = true;
           activeNote?.editor.classList.remove('drop-target');
+          const dropCluster = hoverCluster;
+          hoverCluster?.classList.remove('drop-candidate');
           if (!dragging) {
             return;
           }
-          // A finished drag must not also read as a click: selecting the dragged node would
-          // swap the notes panel over to *its* note, right as the reference lands in the
-          // one the user was writing.
+          // A finished drag must not also read as a click: selecting the dragged element
+          // would swap the notes panel over to *its* note right as the reference lands in
+          // the one being written, and re-select what a move is about to re-render anyway.
           suppressNextClick = true;
           clearTimeout(suppressNextClickTimeout);
           suppressNextClickTimeout = setTimeout(() => {
             suppressNextClick = false;
           }, 300);
+
           if (overNoteEditor(ev.clientX, ev.clientY)) {
             insertNoteRef(id);
+            return;
+          }
+          const targetId = dropCluster ? clusterIdFromElement(dropCluster) : null;
+          if (targetId) {
+            moveElementInto(id, targetId);
           }
         }
 
@@ -3198,10 +3392,13 @@
           if (e.button !== 0) {
             return;
           }
-          const nodeEl = e.target.closest?.('g.node, g.cluster');
+          // Resolved by point rather than by e.target: an edge's invisible click target is
+          // wide enough to sit over a subgraph's own title, and pressing there is a press
+          // on the subgraph as far as anyone can tell by looking.
+          const nodeEl = elementUnderPoint(e.clientX, e.clientY);
           const nodeId = nodeEl ? selectableIdFromElement(nodeEl) : null;
           if (nodeId) {
-            startNoteRefDrag(e, nodeId);
+            startElementDrag(e, nodeId);
           }
         },
         true

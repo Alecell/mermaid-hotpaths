@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { DIAGRAM_WITH_SUBGRAPH, node, openEditor, selectNode, source } from './helpers';
+import { DIAGRAM_WITH_SUBGRAPH, node, openEditor, panBy, selectNode, source } from './helpers';
 
 test.describe('canvas', () => {
   test.beforeEach(async ({ page }) => {
@@ -89,6 +89,68 @@ test.describe('canvas', () => {
     const afterUndo = await source(page);
     expect(afterUndo).toContain('B --> C');
     expect(afterUndo).toContain('C --> D');
+  });
+
+  test('double-clicking a long edge brings its label editor into view', async ({ page }) => {
+    // A chain tall enough that, zoomed in and panned to the top, the A→H edge runs off the
+    // bottom of the screen — and its label anchor (the midpoint) with it.
+    await openEditor(
+      page,
+      `flowchart TD
+  A["Start"] --> B["b"] --> C["c"] --> D["d"] --> E["e"] --> F["f"] --> G["g"] --> H["End"]
+  A --> H
+`
+    );
+    for (let i = 0; i < 5; i++) {
+      await page.locator('#zoom-in').click();
+    }
+    await panBy(page, 0, 500);
+
+    const geometry = await page.evaluate(() => {
+      const svg = document.querySelector('#diagram svg') as SVGSVGElement;
+      const path = [...document.querySelectorAll('path.flowchart-link')].find((el) =>
+        /L_A_H_/.test(el.id)
+      ) as SVGPathElement;
+      const toClient = (length: number) => {
+        const at = path.getPointAtLength(length);
+        const point = svg.createSVGPoint();
+        point.x = at.x;
+        point.y = at.y;
+        const client = point.matrixTransform(svg.getScreenCTM()!);
+        return { x: client.x, y: client.y };
+      };
+      const view = document.getElementById('viewport')!.getBoundingClientRect();
+      const inside = (p: { x: number; y: number }) =>
+        p.x > view.left + 20 && p.x < view.right - 20 && p.y > view.top + 20 && p.y < view.bottom - 20;
+
+      const total = path.getTotalLength();
+      let visiblePoint: { x: number; y: number } | null = null;
+      for (let i = 0; i <= 40 && !visiblePoint; i++) {
+        const candidate = toClient((total * i) / 40);
+        if (inside(candidate)) {
+          visiblePoint = candidate;
+        }
+      }
+      return {
+        midpointVisible: inside(toClient(total / 2)),
+        visiblePoint,
+        view: { left: view.left, top: view.top, right: view.right, bottom: view.bottom },
+      };
+    });
+
+    // The premise of the test: you can see part of the edge, but not where its label lives.
+    expect(geometry.midpointVisible).toBe(false);
+    expect(geometry.visiblePoint).not.toBeNull();
+
+    await page.mouse.dblclick(geometry.visiblePoint!.x, geometry.visiblePoint!.y);
+
+    const editor = page.locator('#inline-label-editor');
+    await expect(editor).toBeVisible();
+    const box = (await editor.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(geometry.view.left);
+    expect(box.y).toBeGreaterThanOrEqual(geometry.view.top);
+    expect(box.x + box.width).toBeLessThanOrEqual(geometry.view.right);
+    expect(box.y + box.height).toBeLessThanOrEqual(geometry.view.bottom);
   });
 
   test('renaming a node in place rewrites only its label', async ({ page }) => {

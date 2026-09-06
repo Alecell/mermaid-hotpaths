@@ -144,6 +144,110 @@ export function convertNodeToSubgraph(source, id, title, childId) {
 }
 
 /**
+ * Every `subgraph` in the source, in the order they appear, each with its nesting depth and
+ * its title (falling back to its id when it has none) — the raw material for a "move
+ * into…" picker.
+ */
+export function listSubgraphs(source) {
+  const found = [];
+  const stack = [];
+  for (const line of source.split('\n')) {
+    const header = HEADER_RE.exec(line);
+    if (header) {
+      const id = header[1];
+      found.push({ id, title: findNodeDeclaration(line, id)?.label ?? id, depth: stack.length });
+      stack.push(id);
+      continue;
+    }
+    if (END_RE.test(line)) {
+      stack.pop();
+    }
+  }
+  return found;
+}
+
+/** Every id declared inside `subgraphId`'s block, nested subgraphs' own ids included. */
+export function idsInsideSubgraph(source, subgraphId) {
+  const lines = source.split('\n');
+  const block = findSubgraphBlock(lines, subgraphId);
+  if (!block) {
+    return new Set();
+  }
+  return extractExistingIds(lines.slice(block.headerIdx + 1, block.endIdx).join('\n'));
+}
+
+/** Puts already-dedented `movedLines` inside `targetId`, or at the root when it's null. */
+function placeLines(source, targetId, movedLines) {
+  const inside = targetId === null ? null : insertInsideSubgraph(source, targetId, movedLines);
+  return (
+    inside ??
+    appendToDiagram(
+      source,
+      movedLines.map((line) => `  ${line}`)
+    )
+  );
+}
+
+/**
+ * Moves a node or subgraph into `targetId`'s block, or out to the root when `targetId` is
+ * null. Only the lines that *declare* the element move: mermaid works out membership from
+ * where a node is declared, so every edge touching it keeps working exactly as written,
+ * wherever in the file that happens to be.
+ *
+ * A node with no declaration of its own (one that only ever appears inside edges) gets a
+ * bare `id` line, which is all mermaid needs to place it. One declared inline on an edge
+ * line (`A[Start] --> B`) hands its shape over to the new declaration and leaves the edge
+ * behind with a bare id.
+ *
+ * Returns the source untouched when the move makes no sense: an unknown target, an element
+ * already there, or a subgraph asked to move inside itself or one of its own descendants.
+ */
+export function moveIntoSubgraph(source, id, targetId) {
+  const stripped = stripNotes(source);
+  if (findEnclosingSubgraph(stripped, id) === targetId) {
+    return source;
+  }
+  const lines = source.split('\n');
+  if (targetId !== null && !findSubgraphBlock(lines, targetId)) {
+    return source;
+  }
+
+  const ownBlock = findSubgraphBlock(lines, id);
+  if (ownBlock) {
+    if (targetId !== null && (targetId === id || idsInsideSubgraph(source, id).has(targetId))) {
+      return source;
+    }
+    const blockLines = lines.slice(ownBlock.headerIdx, ownBlock.endIdx + 1);
+    // Dedent by the block's own indentation rather than trimming every line, so whatever
+    // nesting it contains keeps its shape once re-indented at the destination.
+    const baseIndent = /^\s*/.exec(blockLines[0])?.[0] ?? '';
+    const moved = blockLines.map((line) =>
+      line.startsWith(baseIndent) ? line.slice(baseIndent.length) : line.trimStart()
+    );
+    lines.splice(ownBlock.headerIdx, ownBlock.endIdx - ownBlock.headerIdx + 1);
+    return placeLines(lines.join('\n'), targetId, moved);
+  }
+
+  const decl = findNodeDeclaration(source, id);
+  if (!decl) {
+    const bareRe = new RegExp(`^\\s*${escapeRegExp(id)}\\s*$`);
+    const withoutBareLine = source.split('\n').filter((line) => !bareRe.test(line));
+    return placeLines(withoutBareLine.join('\n'), targetId, [id]);
+  }
+
+  const shape = SHAPES.find((s) => s.key === decl.shapeKey) ?? SHAPES[0];
+  const lineStart = source.lastIndexOf('\n', decl.start - 1) + 1;
+  const nlAfter = source.indexOf('\n', decl.end);
+  const lineEnd = nlAfter === -1 ? source.length : nlAfter;
+  const aloneOnItsLine =
+    !source.slice(lineStart, decl.start).trim() && !source.slice(decl.end, lineEnd).trim();
+  const without = aloneOnItsLine
+    ? source.slice(0, lineStart) + source.slice(nlAfter === -1 ? lineEnd : nlAfter + 1)
+    : source.slice(0, decl.start) + id + source.slice(decl.end);
+  return placeLines(without, targetId, [shapeToken(shape, id, decl.label)]);
+}
+
+/**
  * Deletes a subgraph's whole `subgraph ... end` block (nested subgraphs and all), plus
  * every edge elsewhere in the diagram touching the subgraph itself or any id that was
  * declared inside it — same "deleting a container deletes its contents" cascade as

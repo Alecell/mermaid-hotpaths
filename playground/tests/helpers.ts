@@ -102,6 +102,22 @@ export async function centerOf(locator: Locator): Promise<{ x: number; y: number
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
+/** Pans the canvas the way a user does — Space held, then drag. */
+export async function panBy(page: Page, dx: number, dy: number): Promise<void> {
+  const view = await page.locator('#viewport').boundingBox();
+  if (!view) {
+    throw new Error('no viewport');
+  }
+  const x = view.x + view.width / 2;
+  const y = view.y + view.height / 2;
+  await page.keyboard.down('Space');
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + dx, y + dy, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.up('Space');
+}
+
 /**
  * A press-move-release drag. The intermediate steps matter: every drag gesture in the
  * editor ignores movement under a few pixels so that a plain click never reads as a drag,
