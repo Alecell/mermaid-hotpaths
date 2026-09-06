@@ -38,10 +38,19 @@ export function findSubgraphBlock(lines, subgraphId) {
 
 /**
  * The id of the innermost subgraph `id` lives in, or null when it sits at the diagram's
- * root. Membership is "declared inside the block", which is what mermaid itself goes by —
- * so this prefers the line that actually *declares* `id` (`n3["..."]`, or a bare `n3` on
- * its own line) over a passing mention in an edge, since an edge written inside one
- * subgraph routinely names nodes that live somewhere else.
+ * root.
+ *
+ * Mermaid decides membership from the *blocks* an id appears in — any mention inside
+ * `subgraph … end` claims the node, which is exactly how you nest a node that was declared
+ * elsewhere. Two consequences this function has to respect, and got wrong before:
+ *
+ * - A mention at the root level says nothing. Real diagrams accumulate stray `id`-on-its-own
+ *   lines at the root (this editor's own edge deletion leaves them behind), and stopping at
+ *   the first one reported "lives at the root" for a node mermaid was plainly drawing inside
+ *   a group.
+ * - Among mentions that *are* inside blocks, the line that declares the id (`n3["…"]`) wins
+ *   over a passing mention in an edge, since an edge written inside one subgraph routinely
+ *   names nodes that live in another. Ties go to the first one, mermaid's own reading order.
  *
  * For a subgraph's own id this answers its *parent*: `s2` nested inside `s1` returns `s1`.
  * That's what callers want — "where does a sibling of this element belong".
@@ -52,11 +61,9 @@ export function findSubgraphBlock(lines, subgraphId) {
 export function findEnclosingSubgraph(source, id) {
   const escaped = escapeRegExp(id);
   const declRe = new RegExp(`(?<![\\w-])${escaped}\\s*(?:\\[|\\(|\\{|>|@\\{)`);
-  const bareRe = new RegExp(`^\\s*${escaped}\\s*$`);
   const mentionRe = new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`);
   const stack = [];
-  let mentionedIn = null;
-  let sawMention = false;
+  let best = null;
 
   for (const line of source.split('\n')) {
     const header = HEADER_RE.exec(line);
@@ -71,16 +78,16 @@ export function findEnclosingSubgraph(source, id) {
       stack.pop();
       continue;
     }
-    const enclosing = stack[stack.length - 1] ?? null;
-    if (declRe.test(line) || bareRe.test(line)) {
-      return enclosing;
+    const enclosing = stack[stack.length - 1];
+    if (enclosing === undefined) {
+      continue; // root level: tells us nothing about where the node belongs
     }
-    if (!sawMention && mentionRe.test(line)) {
-      mentionedIn = enclosing;
-      sawMention = true;
+    const rank = declRe.test(line) ? 2 : mentionRe.test(line) ? 1 : 0;
+    if (rank > (best?.rank ?? 0)) {
+      best = { rank, enclosing };
     }
   }
-  return mentionedIn;
+  return best?.enclosing ?? null;
 }
 
 /**

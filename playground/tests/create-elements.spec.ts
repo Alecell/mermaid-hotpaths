@@ -75,6 +75,34 @@ test.describe('creating elements from a node’s "+"', () => {
     expect(await source(page)).toContain('B --> inner');
   });
 
+  test('a stray mention at the root does not fool it about where a node lives', async ({
+    page,
+  }) => {
+    // Real diagrams collect loose `id`-on-its-own lines at the root — this editor's own edge
+    // deletion leaves them behind. Mermaid ignores them for placement (only blocks claim a
+    // node), and so must we: the node here is drawn inside `inner`, so that's where the "+"
+    // has to create.
+    await openEditor(
+      page,
+      `flowchart TD
+  A["Start"]
+  target
+  subgraph outer["Outer"]
+    subgraph inner["Inner"]
+      target["The target"]
+    end
+  end
+  A --> target
+  target
+`
+    );
+
+    await selectNode(page, 'target');
+    await createFromPlus(page, 'node', 'born');
+
+    expect(subgraphBody(await source(page), 'inner')).toContain('born["Node"]');
+  });
+
   test('a node born from a root node stays at the root', async ({ page }) => {
     await selectNode(page, 'A');
     await createFromPlus(page, 'node', 'loose');
