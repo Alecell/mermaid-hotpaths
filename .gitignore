@@ -8,3 +8,7 @@ stats
 
 # local playground project saves when running `pnpm dev` (one JSON file per project)
 /playground-data/
+
+# playwright output (`pnpm test:playground`)
+/test-results/
+/playwright-report/

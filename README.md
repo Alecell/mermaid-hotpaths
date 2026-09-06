@@ -53,6 +53,15 @@ pnpm build
 Builds the two Mermaid bundles the editor imports directly
 (`packages/mermaid/dist/mermaid.esm.mjs`, `packages/mermaid-layout-elk/dist/mermaid-layout-elk.esm.mjs`).
 
+```sh
+pnpm test:playground
+```
+
+Runs the editor's Playwright regression suite (`playground/tests/`) — creating elements,
+subgraph placement, note references, selection overlays, the code panel. It needs `pnpm build`
+to have run at least once, and drives a static server with **no** projects API, so the app
+falls back to `localStorage` and the tests never touch your saved projects.
+
 ## How saving works
 
 The editor auto-detects whether it's talking to a real backend. Locally (`pnpm dev`), it uses
