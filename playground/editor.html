@@ -876,6 +876,7 @@
         convertNodeToSubgraph,
         deleteSubgraphFromSource,
         pruneEmptySubgraphs,
+        pruneRedundantBareLines,
         listSubgraphs,
         idsInsideSubgraph,
         moveIntoSubgraph,
@@ -1381,13 +1382,14 @@
               )
             : [shapeToken(pending.shape, newId, pending.label ?? pending.shape.label)];
 
-        // Something spawned from another element's "+" belongs where that element lives:
-        // born straight into the same subgraph, rather than at the root for the user to
-        // move back in by hand. (`insertInsideSubgraph` returns null if that block can't
-        // be found, which falls through to the root the same as an unparented element.)
-        const parent = pending.connectFrom
-          ? findEnclosingSubgraph(stripped, pending.connectFrom)
-          : null;
+        // Where it goes: a subgraph's "+" fills the subgraph, so `insideOf` is the target
+        // itself; a node's "+" makes a sibling, so it goes wherever that node lives — born
+        // straight into the same subgraph rather than at the root for the user to move back
+        // in by hand. (`insertInsideSubgraph` returns null when that block can't be found,
+        // which falls through to the root the same as an unparented element.)
+        const parent =
+          pending.insideOf ??
+          (pending.connectFrom ? findEnclosingSubgraph(stripped, pending.connectFrom) : null);
 
         beginEdit();
         let next = parent ? insertInsideSubgraph(srcEl.value, parent, declaration) : null;
@@ -2227,6 +2229,9 @@
           }
           srcEl.value = pruneEmptySubgraphs(srcEl.value);
         }
+        // Both paths above can leave an id stranded on a line of its own — see
+        // pruneRedundantBareLines for when that's worth keeping and when it's litter.
+        srcEl.value = pruneRedundantBareLines(srcEl.value);
         srcEl.value = pruneOrphanedNotes(srcEl.value);
         clearSelection();
         clearTimeout(debounceID);
@@ -3092,22 +3097,40 @@
         plusMenuSourceId = null;
       }
 
+      /**
+       * What a "+" means depends on what it's hanging off. On a node it makes a sibling and
+       * wires an edge to it. On a subgraph it fills the subgraph — creating inside it, with
+       * no edge, because a group pointing an arrow at its own member is nobody's intent.
+       * (Connecting a subgraph to something new is still a drag of the "+" onto it.)
+       */
+      function plusMenuTarget() {
+        const sourceId = plusMenuSourceId;
+        const el = sourceId ? findElementForId(currentSvg, sourceId) : null;
+        return el?.classList.contains('cluster')
+          ? { insideOf: sourceId, inside: true }
+          : { connectFrom: sourceId, inside: false };
+      }
+
       document.getElementById('plus-menu-node').addEventListener('click', () => {
-        const connectFrom = plusMenuSourceId;
+        const target = plusMenuTarget();
         closePlusMenu();
         openModal({
           kind: 'node',
           shape: SHAPES[0],
           label: 'Node',
-          title: 'New node',
-          connectFrom,
+          title: target.inside ? 'New node inside' : 'New node',
+          ...target,
         });
       });
 
       document.getElementById('plus-menu-subgraph').addEventListener('click', () => {
-        const connectFrom = plusMenuSourceId;
+        const target = plusMenuTarget();
         closePlusMenu();
-        openModal({ kind: 'subgraph', title: 'New subgraph', connectFrom });
+        openModal({
+          kind: 'subgraph',
+          title: target.inside ? 'New subgraph inside' : 'New subgraph',
+          ...target,
+        });
       });
 
       async function linkExistingNodes(sourceId, targetId) {

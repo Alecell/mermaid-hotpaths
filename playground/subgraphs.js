@@ -278,6 +278,48 @@ export function deleteSubgraphFromSource(source, subgraphId) {
 }
 
 /**
+ * Drops root-level `id`-on-its-own lines that say nothing any more.
+ *
+ * Deleting an edge deliberately leaves its endpoints behind as standalone lines, so that
+ * disconnecting two nodes never deletes them — but when the id is already declared (or used)
+ * elsewhere, that leftover is pure noise. Diagrams edited for a while accumulate piles of
+ * them, and they're not harmless: a stray mention is exactly what used to confuse
+ * `findEnclosingSubgraph` about where a node lives.
+ *
+ * Two things it will not do. It never touches a bare line *inside* a subgraph — there, a
+ * bare id is the idiom for nesting a node declared elsewhere. And it never removes the last
+ * trace of an id: if a line is all that keeps a node in the diagram, it stays, which is what
+ * makes "deleting an edge keeps both its nodes" hold.
+ */
+export function pruneRedundantBareLines(source) {
+  const lines = source.split('\n');
+  const bareRe = /^\s*([A-Za-z][\w-]*)\s*$/;
+  const isComment = (line) => /^\s*%%/.test(line);
+  const kept = [];
+  let depth = 0;
+
+  for (const [index, line] of lines.entries()) {
+    if (HEADER_RE.test(line)) {
+      depth++;
+    } else if (END_RE.test(line)) {
+      depth = Math.max(0, depth - 1);
+    }
+    const bare = depth === 0 ? bareRe.exec(line) : null;
+    if (bare) {
+      const mentionRe = new RegExp(`(?<![\\w-])${escapeRegExp(bare[1])}(?![\\w-])`);
+      const elsewhere = [...kept, ...lines.slice(index + 1)].some(
+        (other) => !isComment(other) && mentionRe.test(other)
+      );
+      if (elsewhere) {
+        continue;
+      }
+    }
+    kept.push(line);
+  }
+  return kept.join('\n');
+}
+
+/**
  * Removes any subgraph left with no member ids at all — most commonly right after deleting
  * its last remaining node — repeating so a now-empty parent subgraph (its only child was
  * itself an emptied-out subgraph) gets cleaned up too.

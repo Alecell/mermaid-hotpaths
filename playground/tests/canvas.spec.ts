@@ -91,6 +91,51 @@ test.describe('canvas', () => {
     expect(afterUndo).toContain('C --> D');
   });
 
+  test('deleting an edge keeps both of its nodes, and leaves no litter behind', async ({
+    page,
+  }) => {
+    const midpoint = await page.evaluate(() => {
+      const svg = document.querySelector('#diagram svg') as SVGSVGElement;
+      const path = [...document.querySelectorAll('path.flowchart-link')].find((el) =>
+        /L_A_B_/.test(el.id)
+      ) as SVGPathElement;
+      const mid = path.getPointAtLength(path.getTotalLength() / 2);
+      const point = svg.createSVGPoint();
+      point.x = mid.x;
+      point.y = mid.y;
+      const client = point.matrixTransform(svg.getScreenCTM()!);
+      return { x: client.x, y: client.y };
+    });
+    await page.mouse.click(midpoint.x, midpoint.y);
+    await expect(page.locator('#selection-layer circle')).toHaveCount(2);
+
+    await page.keyboard.press('Backspace');
+
+    // Disconnecting two nodes must never delete them...
+    await expect(node(page, 'A')).toBeVisible();
+    await expect(node(page, 'B')).toBeVisible();
+    const code = await source(page);
+    expect(code).not.toContain('A --> B');
+    // ...and B stays where it was, rather than being pulled out of its group by a leftover.
+    expect(code).toContain('B["Inside B"]');
+    // No `id`-on-its-own lines left over for ids that are declared anyway.
+    expect(code.split('\n').filter((line) => /^\s*(A|B)\s*$/.test(line))).toHaveLength(0);
+  });
+
+  test('deleting a node leaves no edge pointing at it', async ({ page }) => {
+    await selectNode(page, 'B');
+    await page.keyboard.press('Backspace');
+
+    await expect(node(page, 'B')).toHaveCount(0);
+    const code = await source(page);
+    // Nothing may still reference the id — neither endpoint of any edge.
+    expect(code).not.toMatch(/(^|\s)B\s*(-|=|\.)/m);
+    expect(code).not.toMatch(/(-|=|\.)>\s*B(\s|$)/m);
+    // Its neighbours survive it.
+    await expect(node(page, 'A')).toBeVisible();
+    await expect(node(page, 'C')).toBeVisible();
+  });
+
   test('double-clicking a long edge brings its label editor into view', async ({ page }) => {
     // A chain tall enough that, zoomed in and panned to the top, the A→H edge runs off the
     // bottom of the screen — and its label anchor (the midpoint) with it.

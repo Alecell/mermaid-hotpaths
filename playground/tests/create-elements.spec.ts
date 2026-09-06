@@ -111,6 +111,25 @@ test.describe('creating elements from a node’s "+"', () => {
     expect(await source(page)).toContain('loose["Node"]');
   });
 
+  test('a subgraph’s "+" creates inside it, with no edge to its own member', async ({
+    page,
+  }) => {
+    await selectCluster(page, 's1');
+    await createFromPlus(page, 'node', 'member');
+
+    expect(subgraphBody(await source(page), 's1')).toContain('member["Node"]');
+    // A group pointing an arrow at something it contains is nobody's intent.
+    expect(await source(page)).not.toContain('s1 --> member');
+  });
+
+  test('a subgraph’s "+" can create a nested subgraph too', async ({ page }) => {
+    await selectCluster(page, 's1');
+    await createFromPlus(page, 'subgraph', 'nested');
+
+    await expect(cluster(page, 'nested')).toBeVisible();
+    expect(subgraphBody(await source(page), 's1')).toContain('subgraph nested["Untitled subgraph"]');
+  });
+
   test('dragging the "+" onto another node links them without creating anything', async ({
     page,
   }) => {
