@@ -146,8 +146,14 @@ async function createServer() {
   }
   app.use(express.static('playground'));
 
-  app.listen(port, () => {
-    const url = `http://localhost:${port}`;
+  // Bind (and advertise) IPv4 loopback explicitly rather than Node's default IPv6 wildcard
+  // and a `localhost` URL. Under WSL the browser is typically the Windows one, and only
+  // WSL's IPv4 loopback is reachable from there: Windows resolves `localhost` to `::1`
+  // first, that route into the VM is dropped rather than refused, and the browser hangs
+  // until it times out instead of retrying on IPv4. `http://127.0.0.1:PORT` sidesteps the
+  // whole question, and is equally correct on macOS/Linux.
+  app.listen(Number(port), '0.0.0.0', () => {
+    const url = `http://127.0.0.1:${port}`;
     console.log(`Listening on ${url}`);
     openDevBrowser(url);
   });
