@@ -91,6 +91,33 @@ test.describe('canvas', () => {
     expect(afterUndo).toContain('C --> D');
   });
 
+  test('clicking empty canvas clears the selection, anywhere in the viewport', async ({
+    page,
+  }) => {
+    await selectNode(page, 'A');
+
+    // A corner of the canvas that is deliberately *outside* the drawing's own box — the
+    // spot that used to leave the selection stuck on, because the click never reached the
+    // element the handler was bound to.
+    const spot = await page.evaluate(() => {
+      const view = document.getElementById('viewport')!.getBoundingClientRect();
+      const drawing = document.getElementById('diagram')!.getBoundingClientRect();
+      const point = { x: view.left + 24, y: view.bottom - 24 };
+      const insideDrawing =
+        point.x >= drawing.left &&
+        point.x <= drawing.right &&
+        point.y >= drawing.top &&
+        point.y <= drawing.bottom;
+      return { point, insideDrawing };
+    });
+    expect(spot.insideDrawing).toBe(false);
+
+    await page.mouse.click(spot.point.x, spot.point.y);
+
+    await expect(page.locator('#selection-layer rect')).toHaveCount(0);
+    await expect(page.locator('#element-toolbar')).toBeHidden();
+  });
+
   test('deleting an edge keeps both of its nodes, and leaves no litter behind', async ({
     page,
   }) => {

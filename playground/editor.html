@@ -3237,11 +3237,17 @@
         window.addEventListener('pointerup', onUp);
       }
 
+      // Bound to the whole viewport rather than to #diagram: that element is sized to the
+      // diagram's own box, so clicking the empty canvas *around* the drawing never reached
+      // this handler and the selection just stayed on — which reads as the editor having
+      // got stuck. Everything outside the viewport (toolbars, popovers, the zoom controls)
+      // is a sibling of it, so none of that counts as clicking the canvas.
+      //
       // Capture phase: hotpaths.ts calls stopPropagation() on node clicks (for its own
       // pin-toggle), which would otherwise stop this from ever seeing the click — capturing
       // ancestors run before that. Clicks on our own overlay (the "+" button, drag handles)
       // are left alone so their own listeners get to run.
-      diagramEl.addEventListener(
+      viewportEl.addEventListener(
         'click',
         (e) => {
           if (suppressNextClick) {
