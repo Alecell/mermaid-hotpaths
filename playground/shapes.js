@@ -68,7 +68,7 @@ export function nextAutoId(existingIds, prefix) {
   return `${prefix}${n}`;
 }
 
-function escapeRegExp(s) {
+export function escapeRegExp(s) {
   return s.replace(/[$()*+.?[\\\]^{|}]/g, '\\$&');
 }
 

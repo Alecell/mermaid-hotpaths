@@ -56,6 +56,22 @@ function rewriteNotesBlock(source, notes) {
   return result;
 }
 
+/**
+ * Appends `lines` to the diagram, above the notes footer when there is one. Mermaid
+ * ignores `%%` lines wherever they sit, so this changes nothing about rendering — but
+ * diagram code written *below* a "---- Notes ----" footer reads like something went wrong,
+ * and the next note written would shuffle the footer back down past it anyway.
+ */
+export function appendToDiagram(source, lines) {
+  const block = `${lines.join('\n')}\n`;
+  const at = source.indexOf(NOTES_HEADER);
+  if (at === -1) {
+    const sep = source.length && !source.endsWith('\n') ? '\n' : '';
+    return `${source}${sep}${block}`;
+  }
+  return source.slice(0, at) + block + source.slice(at);
+}
+
 /** Sets (or, given blank text, removes) the note for `kind`:`id`. */
 export function setNote(source, kind, id, text) {
   const notes = parseNotes(source);
@@ -75,6 +91,39 @@ export function removeNote(source, kind, id) {
     return source;
   }
   return rewriteNotesBlock(source, notes);
+}
+
+/**
+ * A note can point at another element by id, written `@n12` — so a note reads as prose
+ * ("blocked by @auth until @n12 lands") while still linking to the real thing. The
+ * notation's parsing *and* its rendering live here together, since the two have to agree
+ * on exactly what counts as a reference.
+ */
+const NOTE_REF_RE = /@([A-Za-z][\w-]*)/g;
+
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
+function escapeHtml(text) {
+  return text.replace(/[&<>]/g, (c) => HTML_ESCAPES[c]);
+}
+
+/**
+ * `text` as HTML with every `@id` wrapped in a `.note-ref` span carrying the id, for the
+ * Notes panel's clickable backdrop. A reference to an id that isn't in the diagram (yet)
+ * is marked `.unknown` rather than dropped — it's most likely a typo or an element that
+ * was deleted, and hiding that would be worse than showing it.
+ */
+export function noteTextToHtml(text, isKnownId) {
+  let out = '';
+  let last = 0;
+  NOTE_REF_RE.lastIndex = 0;
+  let match;
+  while ((match = NOTE_REF_RE.exec(text))) {
+    out += escapeHtml(text.slice(last, match.index));
+    const known = isKnownId(match[1]);
+    out += `<span class="note-ref${known ? '' : ' unknown'}" data-ref-id="${escapeHtml(match[1])}">${escapeHtml(match[0])}</span>`;
+    last = match.index + match[0].length;
+  }
+  return out + escapeHtml(text.slice(last));
 }
 
 /**

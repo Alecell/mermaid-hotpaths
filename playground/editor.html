@@ -21,6 +21,11 @@
       body {
         margin: 0;
         height: 100%;
+        /* The editor is a fixed, full-viewport layout — every scrollable region here has
+           its own container, so the page itself should never scroll. Mermaid also appends
+           a tooltip <div> to <body> and parks it a few pixels past the bottom edge, which
+           was enough on its own to give the whole page a stray scrollbar. */
+        overflow: hidden;
         background: var(--bg);
         color: var(--text);
         font-family:
@@ -208,6 +213,33 @@
       .arrow-popover svg {
         flex: none;
         width: 26px;
+        height: 16px;
+      }
+      .plus-menu[hidden] {
+        display: none;
+      }
+      .plus-menu {
+        position: fixed;
+        z-index: 7;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 156px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 6px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      }
+      .plus-menu button {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        text-align: left;
+      }
+      .plus-menu svg {
+        flex: none;
+        width: 16px;
         height: 16px;
       }
       .element-toolbar[hidden] {
@@ -432,21 +464,79 @@
         text-transform: uppercase;
         letter-spacing: 0.03em;
       }
-      .notes-textarea {
+      /*
+       * The note editor uses the same transparent-textarea-over-a-mirrored-backdrop trick
+       * as the code panel, with the layers swapped: here the painted copy sits *on top*
+       * and is click-through (pointer-events: none) except for its `@id` reference spans.
+       * So clicking a reference jumps to that element, while clicking anywhere else falls
+       * through to the textarea underneath and just places the caret, as if the backdrop
+       * weren't there at all.
+       */
+      .note-editor {
+        position: relative;
         flex: 1;
-        resize: none;
-        background: #0c0e13;
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 8px;
+        min-height: 0;
+      }
+      .notes-textarea,
+      .note-backdrop {
+        position: absolute;
+        inset: 0;
+        margin: 0;
         padding: 12px;
+        border: 1px solid transparent;
+        border-radius: 8px;
         font-family: inherit;
         font-size: 16px;
         line-height: 1.5;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
+        overflow: auto;
+      }
+      .notes-textarea {
+        resize: none;
+        background: #0c0e13;
+        color: transparent;
+        caret-color: var(--text);
+        border-color: var(--border);
         outline: none;
       }
       .notes-textarea:focus {
         border-color: var(--accent);
+      }
+      .note-backdrop {
+        color: var(--text);
+        pointer-events: none;
+      }
+      .note-ref {
+        pointer-events: auto;
+        cursor: pointer;
+        color: var(--accent);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .note-ref.unknown {
+        pointer-events: none;
+        cursor: default;
+        color: var(--danger);
+        text-decoration: none;
+      }
+      .note-editor.drop-target .notes-textarea {
+        border-color: var(--accent);
+      }
+      .drag-chip[hidden] {
+        display: none;
+      }
+      .drag-chip {
+        position: fixed;
+        z-index: 20;
+        pointer-events: none;
+        background: var(--accent);
+        color: #0b1020;
+        font-size: 12px;
+        font-weight: 650;
+        padding: 3px 8px;
+        border-radius: 999px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
       }
       .notes-detail-actions {
         display: flex;
@@ -632,6 +722,12 @@
               <circle cx="16.5" cy="7.5" r="4.5" />
             </svg>
           </button>
+          <button id="et-subgraph-btn" title="Turn into subgraph">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <rect x="3" y="4" width="18" height="16" rx="2" stroke-dasharray="3 2" />
+              <rect x="7" y="9" width="10" height="7" rx="1" />
+            </svg>
+          </button>
           <button id="et-arrow-btn" title="Change arrow type" hidden>
             <svg
               viewBox="0 0 24 24"
@@ -682,6 +778,21 @@
           <div class="arrow-popover-label" id="arrow-direction-label">Direction</div>
           <div class="arrow-popover-row" id="arrow-direction-row"></div>
         </div>
+        <div class="plus-menu" id="plus-menu" hidden>
+          <button id="plus-menu-node" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <rect x="3" y="6" width="18" height="12" rx="1" />
+            </svg>
+            <span>Node</span>
+          </button>
+          <button id="plus-menu-subgraph" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <rect x="3" y="4" width="18" height="16" rx="2" stroke-dasharray="3 2" />
+              <rect x="7" y="9" width="10" height="7" rx="1" />
+            </svg>
+            <span>Subgraph</span>
+          </button>
+        </div>
         <input id="inline-label-editor" class="inline-label-editor" hidden spellcheck="false" />
       </div>
       <div class="notes-panel" id="notes-panel" hidden>
@@ -692,6 +803,8 @@
         <div class="notes-view" id="notes-view"></div>
       </div>
     </main>
+
+    <div class="drag-chip" id="drag-chip" hidden></div>
 
     <div class="modal-backdrop" id="modal-backdrop" hidden>
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -731,7 +844,22 @@
         assignEdgeId,
         clearEdgeId,
       } from './edgeEditor.js';
-      import { parseNotes, setNote, removeNote, stripNotes } from './notes.js';
+      import {
+        findEnclosingSubgraph,
+        insertInsideSubgraph,
+        subgraphBlockLines,
+        convertNodeToSubgraph,
+        deleteSubgraphFromSource,
+        pruneEmptySubgraphs,
+      } from './subgraphs.js';
+      import {
+        parseNotes,
+        setNote,
+        removeNote,
+        stripNotes,
+        appendToDiagram,
+        noteTextToHtml,
+      } from './notes.js';
       import { highlightMermaid } from './highlight.js';
       import { getProject, updateProject } from './projectStore.js';
 
@@ -807,7 +935,12 @@
       const codeBackdropEl = document.getElementById('code-highlight');
 
       function updateCodeHighlight() {
-        codeBackdropEl.innerHTML = highlightMermaid(srcEl.value);
+        // The trailing newline is load-bearing: a <pre> doesn't render the empty final line
+        // that a trailing "\n" produces, but a textarea does — so without it the backdrop
+        // ends up exactly one line shorter than the textarea, can't scroll as far, and at
+        // the bottom of a long file paints every line one row off from the real
+        // (selectable) text underneath.
+        codeBackdropEl.innerHTML = `${highlightMermaid(srcEl.value)}\n`;
       }
       srcEl.addEventListener('input', updateCodeHighlight);
       srcEl.addEventListener('scroll', () => {
@@ -865,6 +998,7 @@
             widenEdgeHitAreas(currentSvg);
             currentEdgeIndex = buildEdgeIndex(code, currentSvg);
             drawNoteBadges(currentSvg);
+            applyOverlayScale();
           }
           clearSelection();
           if (refit) {
@@ -1063,6 +1197,9 @@
         ) {
           arrowPopover.hidden = true;
         }
+        if (!plusMenu.hidden && !plusMenu.contains(e.target)) {
+          closePlusMenu();
+        }
       });
 
       subgraphBtn.addEventListener('click', () => openModal({ kind: 'subgraph' }));
@@ -1070,7 +1207,8 @@
       let pending = null;
       function openModal(p) {
         pending = p;
-        modalTitle.textContent = p.kind === 'subgraph' ? 'New Subgraph' : `New ${p.shape.label}`;
+        modalTitle.textContent =
+          p.title ?? (p.kind === 'subgraph' ? 'New Subgraph' : `New ${p.shape.label}`);
         modalIdInput.value = '';
         modalError.hidden = true;
         modalBackdrop.hidden = false;
@@ -1138,8 +1276,8 @@
         };
       }
 
-      /** Pan the canvas so the just-created node/subgraph is centered, keeping current zoom. */
-      function centerOnNewElement(targetId) {
+      /** Pan the canvas so a node/subgraph is centered, keeping the current zoom. */
+      function centerOnElement(targetId) {
         const svg = diagramEl.querySelector('svg');
         if (!svg) {
           return;
@@ -1165,7 +1303,8 @@
         if (!pending) {
           return;
         }
-        const existingIds = extractExistingIds(stripNotes(srcEl.value));
+        const stripped = stripNotes(srcEl.value);
+        const existingIds = extractExistingIds(stripped);
         const raw = modalIdInput.value.trim();
         let newId;
         if (!raw) {
@@ -1182,22 +1321,41 @@
           newId = raw;
         }
 
-        let line;
-        if (pending.kind === 'subgraph') {
-          const childId = nextAutoId(new Set([...existingIds, newId]), 'n');
-          line = `subgraph ${newId}["Untitled subgraph"]\n  ${childId}["Node"]\nend`;
-        } else {
-          line = shapeLine(pending.shape, newId, pending.shape.label);
-        }
+        const declaration =
+          pending.kind === 'subgraph'
+            ? subgraphBlockLines(
+                newId,
+                'Untitled subgraph',
+                nextAutoId(new Set([...existingIds, newId]), 'n')
+              )
+            : [shapeToken(pending.shape, newId, pending.label ?? pending.shape.label)];
 
-        const sep = srcEl.value.length && !srcEl.value.endsWith('\n') ? '\n' : '';
+        // Something spawned from another element's "+" belongs where that element lives:
+        // born straight into the same subgraph, rather than at the root for the user to
+        // move back in by hand. (`insertInsideSubgraph` returns null if that block can't
+        // be found, which falls through to the root the same as an unparented element.)
+        const parent = pending.connectFrom
+          ? findEnclosingSubgraph(stripped, pending.connectFrom)
+          : null;
+
         beginEdit();
-        srcEl.value = `${srcEl.value}${sep}${line}\n`;
+        let next = parent ? insertInsideSubgraph(srcEl.value, parent, declaration) : null;
+        next ??= appendToDiagram(
+          srcEl.value,
+          declaration.map((line) => `  ${line}`)
+        );
+        if (pending.connectFrom) {
+          // The edge gets its own line rather than being folded into the declaration, so
+          // deleting just the edge later never has to guess whether it also carried the
+          // node's only declaration.
+          next = appendToDiagram(next, [`  ${pending.connectFrom} --> ${newId}`]);
+        }
+        srcEl.value = next;
 
         closeModal();
         clearTimeout(debounceID);
         await renderDiagram();
-        centerOnNewElement(newId);
+        centerOnElement(newId);
         selectNode(newId);
         saveProject();
       }
@@ -1205,6 +1363,7 @@
       // --- Element toolbar (change shape / change arrow type / view in code) ---
       const elementToolbar = document.getElementById('element-toolbar');
       const etShapeBtn = document.getElementById('et-shape-btn');
+      const etSubgraphBtn = document.getElementById('et-subgraph-btn');
       const etArrowBtn = document.getElementById('et-arrow-btn');
       const etCodeBtn = document.getElementById('et-code-btn');
       const etNoteBtn = document.getElementById('et-note-btn');
@@ -1476,6 +1635,7 @@
       function hideElementToolbar() {
         elementToolbar.hidden = true;
         arrowPopover.hidden = true;
+        closePlusMenu();
         if (shapePopoverMode === 'change') {
           shapePopover.hidden = true;
         }
@@ -1487,8 +1647,10 @@
           return;
         }
         // Subgraphs only ever render as a plain bracketed box — there's no alternate
-        // shape to switch between, unlike a node.
-        etShapeBtn.hidden = el.classList.contains('cluster');
+        // shape to switch between, and nothing to promote them into, unlike a node.
+        const isCluster = el.classList.contains('cluster');
+        etShapeBtn.hidden = isCluster;
+        etSubgraphBtn.hidden = isCluster;
         etArrowBtn.hidden = true;
         etCodeBtn.hidden = false;
         const rect = el.getBoundingClientRect();
@@ -1502,6 +1664,7 @@
         }
         const entry = currentEdgeIndex.get(domId);
         etShapeBtn.hidden = true;
+        etSubgraphBtn.hidden = true;
         etArrowBtn.hidden = !entry?.arrowSpan;
         etCodeBtn.hidden = entry?.lineIndex == null;
         const segments = edgeSegmentGroup(pathEl);
@@ -1517,6 +1680,9 @@
 
       /** Keeps the toolbar (and any open popover it spawned) glued to the selection while panning/zooming. */
       function repositionOverlaysForSelection() {
+        // Before the early return: the in-SVG overlays need re-scaling on every zoom even
+        // when there's no toolbar on screen to reposition.
+        applyOverlayScale();
         if (!selection || !currentSvg || elementToolbar.hidden) {
           return;
         }
@@ -1548,6 +1714,51 @@
         }
       }
 
+      /**
+       * Where a source line actually sits, in the code panel's own scroll space. Measured
+       * on the highlighted backdrop rather than computed as `lineHeight * lineIndex`: the
+       * panel soft-wraps (`pre-wrap` + `break-word`), so any long line occupies several
+       * visual rows and that arithmetic drifts further off the further down the file the
+       * target is. The backdrop mirrors the textarea's font, padding and wrapping exactly,
+       * so a Range over it measures the real thing. Returns null if the line can't be
+       * located (an empty backdrop, a lineIndex past the end).
+       */
+      function lineTopInCodePanel(lineIndex, lines) {
+        let charOffset = 0;
+        for (let i = 0; i < lineIndex; i++) {
+          charOffset += lines[i].length + 1;
+        }
+        // An empty line has no glyph of its own to measure — extend into the newline that
+        // ends it, whose rect still sits on that line.
+        const charEnd = charOffset + Math.max(lines[lineIndex].length, 1);
+        const walker = document.createTreeWalker(codeBackdropEl, NodeFilter.SHOW_TEXT);
+        const range = document.createRange();
+        let seen = 0;
+        let started = false;
+        let node;
+        while ((node = walker.nextNode())) {
+          const len = node.nodeValue.length;
+          if (!started && seen + len >= charOffset) {
+            range.setStart(node, charOffset - seen);
+            started = true;
+          }
+          if (started && seen + len >= charEnd) {
+            range.setEnd(node, Math.min(charEnd - seen, len));
+            break;
+          }
+          seen += len;
+        }
+        if (!started) {
+          return null;
+        }
+        const rect = range.getClientRects()[0];
+        if (!rect) {
+          return null;
+        }
+        const panelTop = codeBackdropWrapEl.getBoundingClientRect().top;
+        return rect.top - panelTop + codeBackdropWrapEl.scrollTop;
+      }
+
       function highlightLineInCode(lineIndex) {
         if (lineIndex == null) {
           return;
@@ -1563,12 +1774,10 @@
         const end = start + lines[lineIndex].length;
         srcEl.focus();
         srcEl.setSelectionRange(start, end);
-        const style = getComputedStyle(srcEl);
-        let lineHeight = parseFloat(style.lineHeight);
-        if (!lineHeight || Number.isNaN(lineHeight)) {
-          lineHeight = parseFloat(style.fontSize) * 1.5 || 19.5;
+        const top = lineTopInCodePanel(lineIndex, lines);
+        if (top != null) {
+          srcEl.scrollTop = Math.max(0, top - srcEl.clientHeight / 2);
         }
-        srcEl.scrollTop = Math.max(0, lineHeight * lineIndex - srcEl.clientHeight / 2);
       }
 
       function viewSelectionInCode() {
@@ -1592,9 +1801,34 @@
             shapeToken(shape, nodeId, label) +
             srcEl.value.slice(decl.end);
         } else {
-          const sep = srcEl.value.length && !srcEl.value.endsWith('\n') ? '\n' : '';
-          srcEl.value = `${srcEl.value}${sep}${shapeLine(shape, nodeId, label)}\n`;
+          srcEl.value = appendToDiagram(srcEl.value, [shapeLine(shape, nodeId, label)]);
         }
+        clearTimeout(debounceID);
+        await renderDiagram();
+        selectNode(nodeId);
+        saveProject();
+      }
+
+      /**
+       * Promotes a node into a subgraph of the same id: its label becomes the subgraph's
+       * title, and every edge already pointing at it keeps working untouched, since mermaid
+       * addresses a subgraph by the very same id a node used. The new subgraph starts with
+       * one placeholder child — both because that's what "New subgraph" gives you, and
+       * because a subgraph with no members at all is exactly what `pruneEmptySubgraphs`
+       * exists to sweep away.
+       */
+      async function convertSelectionToSubgraph() {
+        if (!selection || selection.kind !== 'node') {
+          return;
+        }
+        const nodeId = selection.id;
+        if (findElementForId(currentSvg, nodeId)?.classList.contains('cluster')) {
+          return;
+        }
+        const title = findNodeDeclaration(srcEl.value, nodeId)?.label ?? nodeId;
+        const childId = nextAutoId(extractExistingIds(stripNotes(srcEl.value)), 'n');
+        beginEdit();
+        srcEl.value = convertNodeToSubgraph(srcEl.value, nodeId, title, childId);
         clearTimeout(debounceID);
         await renderDiagram();
         selectNode(nodeId);
@@ -1664,8 +1898,7 @@
         } else if (kind === 'subgraph') {
           srcEl.value = insertSubgraphTitle(srcEl.value, id, newLabel);
         } else {
-          const sep = srcEl.value.length && !srcEl.value.endsWith('\n') ? '\n' : '';
-          srcEl.value = `${srcEl.value}${sep}${shapeLine(SHAPES[0], id, newLabel)}\n`;
+          srcEl.value = appendToDiagram(srcEl.value, [shapeLine(SHAPES[0], id, newLabel)]);
         }
         clearTimeout(debounceID);
         await renderDiagram();
@@ -1818,86 +2051,6 @@
       }
 
       // --- Delete the current selection (Backspace/Delete) ---
-
-      /** Finds `subgraph <id>`'s header line and its matching (nesting-aware) `end` line. */
-      function findSubgraphBlock(lines, subgraphId) {
-        const escapedId = subgraphId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const headerRe = new RegExp(`^\\s*subgraph\\s+${escapedId}(\\s|\\[|$)`);
-        const headerIdx = lines.findIndex((l) => headerRe.test(l));
-        if (headerIdx === -1) {
-          return null;
-        }
-        let depth = 1;
-        for (let i = headerIdx + 1; i < lines.length; i++) {
-          const trimmed = lines[i].trim();
-          if (/^subgraph\b/.test(trimmed)) {
-            depth++;
-          } else if (/^end$/.test(trimmed)) {
-            depth--;
-            if (depth === 0) {
-              return { headerIdx, endIdx: i };
-            }
-          }
-        }
-        return null;
-      }
-
-      /**
-       * Deletes a subgraph's whole `subgraph ... end` block (nested subgraphs and all),
-       * plus every edge elsewhere in the diagram touching the subgraph itself or any id
-       * that was declared inside it — same "deleting a container deletes its contents"
-       * cascade as deleting a node deletes its edges.
-       */
-      function deleteSubgraphFromSource(source, subgraphId) {
-        const lines = source.split('\n');
-        const block = findSubgraphBlock(lines, subgraphId);
-        if (!block) {
-          return source;
-        }
-        const blockText = lines.slice(block.headerIdx, block.endIdx + 1).join('\n');
-        const cascadeIds = extractExistingIds(blockText);
-        cascadeIds.add(subgraphId);
-        lines.splice(block.headerIdx, block.endIdx - block.headerIdx + 1);
-        let result = lines.join('\n');
-        for (const cascadeId of cascadeIds) {
-          result = removeNodeEdges(result, cascadeId);
-        }
-        return result;
-      }
-
-      /**
-       * Removes any subgraph left with no member ids at all — most commonly right after
-       * deleting its last remaining node — repeating so a now-empty parent subgraph (its
-       * only child was itself an emptied-out subgraph) gets cleaned up too.
-       */
-      function pruneEmptySubgraphs(source) {
-        let result = source;
-        let changed = true;
-        while (changed) {
-          changed = false;
-          const lines = result.split('\n');
-          for (let i = 0; i < lines.length; i++) {
-            if (!/^\s*subgraph\s+[A-Za-z][\w-]*/.test(lines[i])) {
-              continue;
-            }
-            const subgraphId = /^\s*subgraph\s+([A-Za-z][\w-]*)/.exec(lines[i])[1];
-            const block = findSubgraphBlock(lines, subgraphId);
-            if (!block || block.headerIdx !== i) {
-              continue;
-            }
-            const interior = lines.slice(block.headerIdx + 1, block.endIdx).join('\n');
-            if (extractExistingIds(interior).size === 0) {
-              lines.splice(block.headerIdx, block.endIdx - block.headerIdx + 1);
-              // The pruned subgraph may still be referenced by edges elsewhere
-              // (e.g. `A --> s2`) — drop those too, same as deleting it outright.
-              result = removeNodeEdges(lines.join('\n'), subgraphId);
-              changed = true;
-              break;
-            }
-          }
-        }
-        return result;
-      }
 
       /**
        * Drops any note whose id (a node/subgraph id, or an edge's own explicit id) no
@@ -2106,8 +2259,73 @@
         notesViewEl.appendChild(list);
       }
 
+      // The note editor currently on screen (there's at most one). Kept out here because
+      // the drag-a-node-onto-the-notes gesture and the `@id` reference clicks both need to
+      // reach it from outside renderNotesView's closure.
+      let activeNote = null;
+      let pendingNoteCommit = null;
+
+      /** Repaints the click-through copy of the note's text that sits over the textarea. */
+      function paintNoteBackdrop() {
+        if (!activeNote) {
+          return;
+        }
+        const knownIds = extractExistingIds(stripNotes(srcEl.value));
+        // Trailing newline for the same reason the code panel needs one — see
+        // updateCodeHighlight.
+        const html = noteTextToHtml(activeNote.textarea.value, (id) => knownIds.has(id));
+        activeNote.backdrop.innerHTML = `${html}\n`;
+      }
+
+      /**
+       * Writes `@id` into the open note, at the caret — or at the end of the text, if the
+       * textarea hasn't been clicked into yet. This is what a node dropped onto the notes
+       * panel turns into.
+       */
+      function insertNoteRef(id) {
+        if (!activeNote) {
+          return;
+        }
+        const { textarea } = activeNote;
+        const at = activeNote.caret ?? textarea.value.length;
+        const before = textarea.value.slice(0, at);
+        const after = textarea.value.slice(at);
+        // Never glue the reference onto adjacent words — `@n3` has to stay its own token
+        // for the parser (and the reader) to see it as a reference at all.
+        const padBefore = before && !/\s$/.test(before) ? ' ' : '';
+        const padAfter = after && !/^\s/.test(after) ? ' ' : '';
+        const ref = `${padBefore}@${id}${padAfter}`;
+        textarea.value = before + ref + after;
+        const caret = before.length + ref.length;
+        activeNote.caret = caret;
+        textarea.focus();
+        textarea.setSelectionRange(caret, caret);
+        paintNoteBackdrop();
+      }
+
+      /** Jumps to whatever a note's `@id` reference points at — a node, subgraph or edge. */
+      async function goToNoteRef(id) {
+        // Clicking the reference blurred the textarea first, and that commits the note and
+        // re-renders the diagram (which clears the selection). Let it finish, or the
+        // re-render lands last and wipes the selection we're about to make.
+        await pendingNoteCommit;
+        if (!currentSvg) {
+          return;
+        }
+        if (findElementForId(currentSvg, id)) {
+          centerOnElement(id);
+          selectNode(id);
+          return;
+        }
+        const match = Array.from(currentEdgeIndex.entries()).find(([, e]) => e.edgeId === id);
+        if (match) {
+          selectEdge(match[0]);
+        }
+      }
+
       function renderNotesView() {
         notesViewEl.innerHTML = '';
+        activeNote = null;
         const notes = parseNotes(srcEl.value);
         const target = currentSelectionNoteTarget();
         if (!target) {
@@ -2119,10 +2337,49 @@
         header.className = 'notes-detail-header';
         header.textContent = `${noteKindLabel(target.kind)} · ${target.id ?? '(new note)'}`;
 
+        const editor = document.createElement('div');
+        editor.className = 'note-editor';
         const textarea = document.createElement('textarea');
         textarea.className = 'notes-textarea';
-        textarea.placeholder = 'Write a note for this element…';
+        textarea.placeholder = 'Write a note…  (drag a node in to reference it)';
         textarea.value = target.id ? (notes.get(`${target.kind}:${target.id}`) ?? '') : '';
+        const backdrop = document.createElement('div');
+        backdrop.className = 'note-backdrop';
+        backdrop.setAttribute('aria-hidden', 'true');
+        editor.append(textarea, backdrop);
+        activeNote = { textarea, backdrop, editor, caret: null };
+        paintNoteBackdrop();
+
+        textarea.addEventListener('input', () => {
+          activeNote.caret = textarea.selectionStart;
+          paintNoteBackdrop();
+        });
+        textarea.addEventListener('scroll', () => {
+          backdrop.scrollTop = textarea.scrollTop;
+          backdrop.scrollLeft = textarea.scrollLeft;
+        });
+        // The caret is remembered rather than read on demand: by the time a dragged node is
+        // dropped, focus has long since left the textarea and selectionStart has moved.
+        for (const event of ['click', 'keyup', 'select']) {
+          textarea.addEventListener(event, () => {
+            activeNote.caret = textarea.selectionStart;
+          });
+        }
+        // On pointerdown, not click. Pressing a reference blurs the textarea, and that
+        // commit re-renders the whole panel — so by the time a click event would be
+        // dispatched, the span that was pressed is gone and the click lands on whatever
+        // replaced it. Taking the press instead, and doing the commit here explicitly
+        // (preventDefault keeps focus put, so no blur races us), makes the order fixed:
+        // save the note, then navigate.
+        backdrop.addEventListener('pointerdown', (e) => {
+          const ref = e.target.closest?.('.note-ref');
+          if (!ref) {
+            return;
+          }
+          e.preventDefault();
+          doCommit(textarea.value, false);
+          goToNoteRef(ref.dataset.refId);
+        });
 
         // A successful commit re-renders this whole panel (renderNotesView wipes
         // notesViewEl and rebuilds it), which removes this still-focused textarea from
@@ -2134,7 +2391,7 @@
         function doCommit(text, reselect) {
           if (committed) return;
           committed = true;
-          commitNote(target, text, reselect);
+          pendingNoteCommit = commitNote(target, text, reselect);
         }
 
         const actions = document.createElement('div');
@@ -2156,7 +2413,7 @@
           }
         });
 
-        notesViewEl.append(header, textarea, actions);
+        notesViewEl.append(header, editor, actions);
       }
 
       /** A small badge near every noted node/subgraph/edge — visible without selecting it. */
@@ -2200,6 +2457,10 @@
           }
           const badge = document.createElementNS(ns, 'g');
           badge.classList.add('note-badge');
+          // Anchor kept on the element itself: applyOverlayScale rebuilds this transform
+          // on every zoom so the badge keeps its size in screen pixels.
+          badge.dataset.x = point.x;
+          badge.dataset.y = point.y;
           badge.setAttribute('transform', `translate(${point.x}, ${point.y})`);
           badge.innerHTML = `
             <circle r="6.5" fill="#f4b740" stroke="#0b1020" stroke-width="1.2"/>
@@ -2231,6 +2492,11 @@
         openFloatingPopover(shapePopover, etShapeBtn);
       });
 
+      etSubgraphBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        convertSelectionToSubgraph();
+      });
+
       etArrowBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         openArrowPopoverForSelection();
@@ -2243,6 +2509,53 @@
 
       // --- Click a node/edge to select it; drag an edge's endpoint to reassign it ---
       const SELECT_COLOR = '#4f8cff';
+      const EDGE_HIT_WIDTH = 14;
+
+      /*
+       * Every overlay this file draws lives inside the SVG, in the diagram's own user space
+       * — so it shrinks right along with the diagram as you zoom out, and at a wide zoom
+       * the "+" button and the edge handles become sub-pixel targets nobody can hit. Each
+       * overlay registers how to re-draw itself for a given `k` (svg user units per screen
+       * pixel) and every pan/zoom re-applies them, so a 2px ring stays 2px and an 11px
+       * button stays an 11px button at any zoom.
+       */
+      let scaledOverlays = [];
+
+      function overlayScale() {
+        const ctm = currentSvg?.getScreenCTM();
+        return ctm?.a ? 1 / ctm.a : 1;
+      }
+
+      /** Registers `apply(k)`, runs it once, and returns a function to unregister it. */
+      function addScaledOverlay(apply) {
+        scaledOverlays.push(apply);
+        apply(overlayScale());
+        return () => {
+          scaledOverlays = scaledOverlays.filter((fn) => fn !== apply);
+        };
+      }
+
+      function applyOverlayScale() {
+        if (!currentSvg) {
+          return;
+        }
+        const k = overlayScale();
+        for (const apply of scaledOverlays) {
+          apply(k);
+        }
+        // Not selection overlays, but the same problem: an edge's invisible click target is
+        // useless once it shrinks to a hairline, and a note badge becomes an unreadable
+        // speck. Both are redrawn per render, so they're scaled here rather than registered.
+        for (const hit of currentSvg.querySelectorAll('.edge-hit-area')) {
+          hit.style.strokeWidth = `${EDGE_HIT_WIDTH * k}`;
+        }
+        for (const badge of currentSvg.querySelectorAll('#note-badges > g')) {
+          badge.setAttribute(
+            'transform',
+            `translate(${badge.dataset.x}, ${badge.dataset.y}) scale(${k})`
+          );
+        }
+      }
 
       function nodeIdFromElement(el) {
         const m = /-flowchart-(.+)-\d+$/.exec(el.id);
@@ -2279,6 +2592,7 @@
         if (layer) {
           layer.innerHTML = '';
         }
+        scaledOverlays = [];
         hideElementToolbar();
         if (!notesPanelEl.hidden) {
           renderNotesView();
@@ -2301,7 +2615,7 @@
           hit.classList.add('edge-hit-area');
           hit.style.fill = 'none';
           hit.style.stroke = 'transparent';
-          hit.style.strokeWidth = '14';
+          hit.style.strokeWidth = `${EDGE_HIT_WIDTH}`;
           hit.dataset.forEdge = path.id;
           path.insertAdjacentElement('afterend', hit);
         }
@@ -2317,20 +2631,28 @@
         const ns = 'http://www.w3.org/2000/svg';
 
         const rect = document.createElementNS(ns, 'rect');
-        rect.setAttribute('x', b.x - 4);
-        rect.setAttribute('y', b.y - 4);
-        rect.setAttribute('width', b.width + 8);
-        rect.setAttribute('height', b.height + 8);
-        rect.setAttribute('rx', 6);
         rect.setAttribute('fill', 'none');
         rect.setAttribute('stroke', SELECT_COLOR);
-        rect.setAttribute('stroke-width', 2);
         rect.style.pointerEvents = 'none';
+        addScaledOverlay((k) => {
+          const pad = 4 * k;
+          rect.setAttribute('x', b.x - pad);
+          rect.setAttribute('y', b.y - pad);
+          rect.setAttribute('width', b.width + pad * 2);
+          rect.setAttribute('height', b.height + pad * 2);
+          rect.setAttribute('rx', 6 * k);
+          rect.setAttribute('stroke-width', 2 * k);
+        });
         layer.appendChild(rect);
 
         const plus = document.createElementNS(ns, 'g');
-        plus.setAttribute('transform', `translate(${b.x + b.width / 2}, ${b.y + b.height + 18})`);
         plus.style.cursor = 'pointer';
+        addScaledOverlay((k) => {
+          plus.setAttribute(
+            'transform',
+            `translate(${b.x + b.width / 2}, ${b.y + b.height + 18 * k}) scale(${k})`
+          );
+        });
         plus.innerHTML = `
           <circle r="11" fill="${SELECT_COLOR}" stroke="#0b1020" stroke-width="1.5"/>
           <line x1="-5" y1="0" x2="5" y2="0" stroke="#0b1020" stroke-width="2" stroke-linecap="round"/>
@@ -2357,11 +2679,13 @@
         const handle = document.createElementNS(ns, 'circle');
         handle.setAttribute('cx', point.x);
         handle.setAttribute('cy', point.y);
-        handle.setAttribute('r', 7);
         handle.setAttribute('fill', SELECT_COLOR);
         handle.setAttribute('stroke', '#0b1020');
-        handle.setAttribute('stroke-width', 2);
         handle.style.cursor = 'grab';
+        addScaledOverlay((k) => {
+          handle.setAttribute('r', 7 * k);
+          handle.setAttribute('stroke-width', 2 * k);
+        });
         handle.addEventListener('pointerdown', (e) => startHandleDrag(e, entry, which, point));
         layer.appendChild(handle);
       }
@@ -2396,9 +2720,9 @@
           highlight.setAttribute('d', seg.getAttribute('d'));
           highlight.setAttribute('fill', 'none');
           highlight.setAttribute('stroke', SELECT_COLOR);
-          highlight.setAttribute('stroke-width', 3);
           highlight.setAttribute('stroke-linecap', 'round');
           highlight.style.pointerEvents = 'none';
+          addScaledOverlay((k) => highlight.setAttribute('stroke-width', 3 * k));
           layer.appendChild(highlight);
         }
 
@@ -2518,9 +2842,11 @@
         rubberBand.setAttribute('x2', fixedPoint.x);
         rubberBand.setAttribute('y2', fixedPoint.y);
         rubberBand.setAttribute('stroke', SELECT_COLOR);
-        rubberBand.setAttribute('stroke-width', 2);
-        rubberBand.setAttribute('stroke-dasharray', '4 3');
         rubberBand.style.pointerEvents = 'none';
+        const unscaleRubberBand = addScaledOverlay((k) => {
+          rubberBand.setAttribute('stroke-width', 2 * k);
+          rubberBand.setAttribute('stroke-dasharray', `${4 * k} ${3 * k}`);
+        });
         layer.appendChild(rubberBand);
 
         let hoverTarget = null;
@@ -2556,6 +2882,7 @@
           autopan.stop();
           hoverTarget?.classList.remove('drop-candidate');
           rubberBand.remove();
+          unscaleRubberBand();
 
           const nodeEl =
             document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('g.node, g.cluster') ??
@@ -2586,27 +2913,48 @@
         window.addEventListener('pointerup', onUp);
       }
 
-      async function addConnectedNode(sourceId) {
-        const existingIds = extractExistingIds(stripNotes(srcEl.value));
-        const newId = nextAutoId(existingIds, 'n');
-        const sep = srcEl.value.length && !srcEl.value.endsWith('\n') ? '\n' : '';
-        beginEdit();
-        // The new node gets its own declaration line, separate from the edge that
-        // connects it — so deleting just the edge later (removeEdgeSegment) never has
-        // to guess whether it's also this node's only declaration.
-        srcEl.value = `${srcEl.value}${sep}${shapeLine(SHAPES[0], newId, 'Node')}\n  ${sourceId} --> ${newId}\n`;
-        clearSelection();
-        clearTimeout(debounceID);
-        await renderDiagram();
-        centerOnNewElement(newId);
-        selectNode(newId);
-        saveProject();
+      // Clicking a node's "+" asks what to create — a node or a subgraph — and then, like
+      // every other creation path in this editor, offers to name it. Deliberately no shape
+      // picker here: the shape of a brand new node is a detail you change afterwards from
+      // its own toolbar, and asking for it up front turns one click into three.
+      const plusMenu = document.getElementById('plus-menu');
+      let plusMenuSourceId = null;
+
+      function openPlusMenu(clientX, clientY, sourceId) {
+        plusMenuSourceId = sourceId;
+        plusMenu.hidden = false;
+        const w = plusMenu.offsetWidth;
+        const h = plusMenu.offsetHeight;
+        plusMenu.style.left = `${Math.min(Math.max(8, clientX - w / 2), window.innerWidth - w - 8)}px`;
+        plusMenu.style.top = `${Math.min(clientY + 10, window.innerHeight - h - 8)}px`;
       }
 
+      function closePlusMenu() {
+        plusMenu.hidden = true;
+        plusMenuSourceId = null;
+      }
+
+      document.getElementById('plus-menu-node').addEventListener('click', () => {
+        const connectFrom = plusMenuSourceId;
+        closePlusMenu();
+        openModal({
+          kind: 'node',
+          shape: SHAPES[0],
+          label: 'Node',
+          title: 'New node',
+          connectFrom,
+        });
+      });
+
+      document.getElementById('plus-menu-subgraph').addEventListener('click', () => {
+        const connectFrom = plusMenuSourceId;
+        closePlusMenu();
+        openModal({ kind: 'subgraph', title: 'New subgraph', connectFrom });
+      });
+
       async function linkExistingNodes(sourceId, targetId) {
-        const sep = srcEl.value.length && !srcEl.value.endsWith('\n') ? '\n' : '';
         beginEdit();
-        srcEl.value = `${srcEl.value}${sep}  ${sourceId} --> ${targetId}\n`;
+        srcEl.value = appendToDiagram(srcEl.value, [`  ${sourceId} --> ${targetId}`]);
         clearSelection();
         clearTimeout(debounceID);
         await renderDiagram();
@@ -2629,10 +2977,12 @@
         rubberBand.setAttribute('x2', startPoint.x);
         rubberBand.setAttribute('y2', startPoint.y);
         rubberBand.setAttribute('stroke', SELECT_COLOR);
-        rubberBand.setAttribute('stroke-width', 2);
-        rubberBand.setAttribute('stroke-dasharray', '4 3');
         rubberBand.style.pointerEvents = 'none';
         rubberBand.hidden = true;
+        const unscaleRubberBand = addScaledOverlay((k) => {
+          rubberBand.setAttribute('stroke-width', 2 * k);
+          rubberBand.setAttribute('stroke-dasharray', `${4 * k} ${3 * k}`);
+        });
         layer.appendChild(rubberBand);
 
         let hoverTarget = null;
@@ -2675,9 +3025,13 @@
           autopan.stop();
           hoverTarget?.classList.remove('drop-candidate');
           rubberBand.remove();
+          unscaleRubberBand();
 
           if (!dragging) {
-            addConnectedNode(sourceId);
+            // Deferred a tick so the click this pointerup is about to produce goes by
+            // first — the document-level "click outside closes popovers" handler would
+            // otherwise close the menu the very gesture that opened it.
+            setTimeout(() => openPlusMenu(ev.clientX, ev.clientY, sourceId), 0);
             return;
           }
 
@@ -2763,6 +3117,91 @@
           if (domId) {
             e.stopPropagation();
             startEdgeLabelEdit(domId);
+          }
+        },
+        true
+      );
+
+      // --- Drag a node into the open note to reference it (`@id`) ---
+      const dragChip = document.getElementById('drag-chip');
+
+      /**
+       * Dragging a node/subgraph from the canvas onto the open note writes its id into the
+       * text as an `@id` reference — the alternative being to read the id off the diagram
+       * and type it out by hand. Hangs off a plain pointerdown on the element (nothing else
+       * on the canvas drags a node) and only engages once the pointer has actually moved,
+       * so a normal click still just selects, and a drag that ends anywhere but on the note
+       * does nothing at all.
+       */
+      function startNoteRefDrag(e, id) {
+        if (notesPanelEl.hidden || !activeNote) {
+          return;
+        }
+        // Canceling pointerdown suppresses the compatibility mousedown, and with it the
+        // focus change it would cause. That matters more than it sounds: moving focus off
+        // the note's textarea fires its blur, which commits the note and re-renders the
+        // diagram — tearing down the very editor this drag is aiming at, mid-gesture.
+        e.preventDefault();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        let dragging = false;
+
+        function overNoteEditor(clientX, clientY) {
+          const under = document.elementFromPoint(clientX, clientY);
+          return !!under && !!activeNote?.editor.contains(under);
+        }
+
+        function onMove(ev) {
+          if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) {
+            return;
+          }
+          dragging = true;
+          dragChip.hidden = false;
+          dragChip.textContent = `@${id}`;
+          dragChip.style.left = `${ev.clientX + 12}px`;
+          dragChip.style.top = `${ev.clientY + 12}px`;
+          activeNote?.editor.classList.toggle(
+            'drop-target',
+            overNoteEditor(ev.clientX, ev.clientY)
+          );
+        }
+
+        function onUp(ev) {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          dragChip.hidden = true;
+          activeNote?.editor.classList.remove('drop-target');
+          if (!dragging) {
+            return;
+          }
+          // A finished drag must not also read as a click: selecting the dragged node would
+          // swap the notes panel over to *its* note, right as the reference lands in the
+          // one the user was writing.
+          suppressNextClick = true;
+          clearTimeout(suppressNextClickTimeout);
+          suppressNextClickTimeout = setTimeout(() => {
+            suppressNextClick = false;
+          }, 300);
+          if (overNoteEditor(ev.clientX, ev.clientY)) {
+            insertNoteRef(id);
+          }
+        }
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+      }
+
+      // Capture phase, same reasoning as the click listener above.
+      diagramEl.addEventListener(
+        'pointerdown',
+        (e) => {
+          if (e.button !== 0) {
+            return;
+          }
+          const nodeEl = e.target.closest?.('g.node, g.cluster');
+          const nodeId = nodeEl ? selectableIdFromElement(nodeEl) : null;
+          if (nodeId) {
+            startNoteRefDrag(e, nodeId);
           }
         },
         true
