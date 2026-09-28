@@ -303,6 +303,10 @@ export function pruneRedundantBareLines(source) {
       depth++;
     } else if (END_RE.test(line)) {
       depth = Math.max(0, depth - 1);
+      // A root-level block's own `end` is back at depth 0 and reads exactly like a bare
+      // id — one that's "mentioned elsewhere" as soon as any other block exists.
+      kept.push(line);
+      continue;
     }
     const bare = depth === 0 ? bareRe.exec(line) : null;
     if (bare) {

@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { DIAGRAM_WITH_SUBGRAPH, node, openEditor, panBy, selectNode, source } from './helpers';
+import {
+  DIAGRAM_WITH_SUBGRAPH,
+  cluster,
+  node,
+  openEditor,
+  panBy,
+  selectNode,
+  source,
+} from './helpers';
 
 test.describe('canvas', () => {
   test.beforeEach(async ({ page }) => {
@@ -161,6 +169,33 @@ test.describe('canvas', () => {
     // Its neighbours survive it.
     await expect(node(page, 'A')).toBeVisible();
     await expect(node(page, 'C')).toBeVisible();
+  });
+
+  test('deleting keeps every subgraph closed', async ({ page }) => {
+    // Two root-level blocks: after the first `end` the scan is back at the root, where a
+    // lone `end` looks exactly like a stray bare id — and with the word appearing again
+    // further down, it used to be pruned as "redundant", unclosing every block but the last.
+    await openEditor(
+      page,
+      `flowchart TD
+  subgraph s1["Group one"]
+    A["Inside A"]
+  end
+  subgraph s2["Group two"]
+    B["Inside B"]
+    C["Inside C"]
+  end
+  A --> B
+`
+    );
+    await selectNode(page, 'C');
+    await page.keyboard.press('Backspace');
+
+    await expect(node(page, 'C')).toHaveCount(0);
+    const code = await source(page);
+    expect(code.split('\n').filter((line) => /^\s*end\s*$/.test(line))).toHaveLength(2);
+    await expect(cluster(page, 's1')).toBeVisible();
+    await expect(cluster(page, 's2')).toBeVisible();
   });
 
   test('double-clicking a long edge brings its label editor into view', async ({ page }) => {
