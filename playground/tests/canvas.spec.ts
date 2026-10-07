@@ -162,6 +162,25 @@ test.describe('canvas', () => {
     }
   });
 
+  test('each segment of a chain is its own edge, with handles and an arrow to retype', async ({
+    page,
+  }) => {
+    // `C --> B --> A` used to parse as one edge C --> A labelled "> B" — the label-text
+    // opener `--` swallowing the first arrowhead and the second arrow closing it — so the
+    // real rendered segments had no source entry: selectable, but inert.
+    await openEditor(
+      page,
+      `flowchart TD
+  C --> B --> A
+`
+    );
+    const midpoint = await pointOnEdge(page, 'L_B_A_');
+    await page.mouse.click(midpoint.x, midpoint.y);
+
+    await expect(page.locator('#selection-layer circle')).toHaveCount(2);
+    await expect(page.locator('#et-arrow-btn')).toBeVisible();
+  });
+
   test('deleting a node takes its edges with it, and undo puts everything back', async ({
     page,
   }) => {

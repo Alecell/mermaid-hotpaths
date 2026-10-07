@@ -67,16 +67,19 @@ const EDGE_LABEL = String.raw`(?:\|[^|\n]*\|)?`;
 // "Text between delimiters" labels. Each open token is followed by non-greedy text and
 // a same-family close token shaped just like a bare, label-less ARROW (so `-->`, `--x`,
 // `--o`, `---`, `.->`, `..->`, `==>`, `===`, ... are all valid closers) — the negative
-// lookahead right after the open excludes the label-less form (e.g. `---`, `-.->`), which
-// has no gap for text and must fall through to the bare-ARROW branch below instead.
+// lookahead right after the open excludes anything that is really a complete arrow on
+// its own: the label-less form (`---`, `-.->`), which has no gap for text, and an
+// arrowhead (`-->`, `--o`, `--x`, `==>`), which mermaid lexes as one token. Without the
+// latter, a chain like `C --> B --> A` reads as a single `C --> A` carrying the "label"
+// `> B` — the open `--`, lazy text, and the next arrow as its closer.
 // Leading head chars (before the open delimiter, e.g. the `<` in `<-- text --> `) and
 // trailing ones (closing an arrowhead, e.g. the `>` in `--> `) are different sets — `<`
 // only ever leads, `>` only ever trails — same split the plain ARROW pattern above uses.
 const LEAD_CHAR = String.raw`[<ox]`;
 const TAIL_CHAR = String.raw`[>ox]`;
-const DASH_TEXT = String.raw`--(?!-)[^\n]*?-{2,3}${TAIL_CHAR}?`;
-const DOT_TEXT = String.raw`-\.(?!-)[^\n]*?-?\.+-${TAIL_CHAR}?`;
-const THICK_TEXT = String.raw`==(?!=)[^\n]*?={2,3}${TAIL_CHAR}?`;
+const DASH_TEXT = String.raw`--(?![->ox])[^\n]*?-{2,3}${TAIL_CHAR}?`;
+const DOT_TEXT = String.raw`-\.(?![-.>ox])[^\n]*?-?\.+-${TAIL_CHAR}?`;
+const THICK_TEXT = String.raw`==(?![=>ox])[^\n]*?={2,3}${TAIL_CHAR}?`;
 const TEXT_LABEL = String.raw`${LEAD_CHAR}?(?:${DASH_TEXT}|${DOT_TEXT}|${THICK_TEXT})`;
 // The whole span between two ids (edge id excluded): a text-between-delimiters label if
 // there is one, else a bare arrow with an optional `|text|` label. Order matters — see the
@@ -112,15 +115,15 @@ const SIMPLE_LINE_RE = new RegExp(
  * a consistent one.
  */
 function parseArrowText(text) {
-  const dash = /^([<ox]?)--(?!-)([^\n]*?)(-{2,3}[>ox]?)$/.exec(text);
+  const dash = /^([<ox]?)--(?![->ox])([^\n]*?)(-{2,3}[>ox]?)$/.exec(text);
   if (dash) {
     return { label: dash[2].trim(), styleToken: dash[1] + dash[3] };
   }
-  const dot = /^([<ox]?)-\.(?!-)([^\n]*?)(-?\.+-[>ox]?)$/.exec(text);
+  const dot = /^([<ox]?)-\.(?![-.>ox])([^\n]*?)(-?\.+-[>ox]?)$/.exec(text);
   if (dot) {
     return { label: dot[2].trim(), styleToken: dot[1] + dot[3] };
   }
-  const thick = /^([<ox]?)==(?!=)([^\n]*?)(={2,3}[>ox]?)$/.exec(text);
+  const thick = /^([<ox]?)==(?![=>ox])([^\n]*?)(={2,3}[>ox]?)$/.exec(text);
   if (thick) {
     return { label: thick[2].trim(), styleToken: thick[1] + thick[3] };
   }
