@@ -23,6 +23,34 @@ function subgraphBody(code: string, subgraphId: string): string[] {
 }
 
 /**
+ * The subgraph `id` is declared in, or null at the root — read straight off the source,
+ * nesting-aware, so a test can say where an element ended up without caring about
+ * indentation or line order.
+ */
+function enclosingOf(code: string, id: string): string | null {
+  const stack: string[] = [];
+  for (const raw of code.split('\n')) {
+    const line = raw.trim();
+    const header = /^subgraph\s+([A-Za-z][\w-]*)/.exec(line);
+    if (header) {
+      if (header[1] === id) {
+        return stack[stack.length - 1] ?? null;
+      }
+      stack.push(header[1]);
+      continue;
+    }
+    if (/^end$/.test(line)) {
+      stack.pop();
+      continue;
+    }
+    if (line === id || line.startsWith(`${id}[`)) {
+      return stack[stack.length - 1] ?? null;
+    }
+  }
+  throw new Error(`${id} is declared nowhere`);
+}
+
+/**
  * A point inside a subgraph but off its members — its title strip. Dropping onto a member
  * works too (it reads as "into that member's group"), but this keeps the test about the
  * group itself.
@@ -198,18 +226,7 @@ test.describe('the move button', () => {
   test('is offered for subgraphs too, and not for edges', async ({ page }) => {
     // The edge first, while nothing is selected: a selected element's toolbar floats right
     // above it, and would sit between the mouse and the edge we mean to click.
-    const midpoint = await page.evaluate(() => {
-      const svg = document.querySelector('#diagram svg') as SVGSVGElement;
-      const path = [...document.querySelectorAll('path.flowchart-link')].find((el) =>
-        /L_A_B_/.test(el.id)
-      ) as SVGPathElement;
-      const mid = path.getPointAtLength(path.getTotalLength() / 2);
-      const point = svg.createSVGPoint();
-      point.x = mid.x;
-      point.y = mid.y;
-      const client = point.matrixTransform(svg.getScreenCTM()!);
-      return { x: client.x, y: client.y };
-    });
+    const midpoint = await pointOnEdge(page, 'L_A_B_');
     await page.mouse.click(midpoint.x, midpoint.y);
 
     await expect(page.locator('#et-arrow-btn')).toBeVisible();
@@ -217,5 +234,99 @@ test.describe('the move button', () => {
 
     await selectCluster(page, 's1');
     await expect(page.locator('#et-move-btn')).toBeVisible();
+  });
+});
+
+test.describe('the move-out button', () => {
+  const moveOut = (page: Parameters<typeof selectNode>[0]) => page.locator('#et-move-out-btn');
+
+  test('moves a nested node one level out, edges intact', async ({ page }) => {
+    await openEditor(page, DIAGRAM_WITH_SUBGRAPH);
+    await selectNode(page, 'B');
+    await moveOut(page).click();
+
+    await expect.poll(async () => enclosingOf(await source(page), 'B')).toBeNull();
+    const code = await source(page);
+    expect(code).toContain('B["Inside B"]');
+    expect(code).toContain('A --> B');
+    expect(code).toContain('B --> C');
+    // It stays selected, now at the root — where there is nothing left to step out of.
+    await expect(page.locator('#element-toolbar')).toBeVisible();
+    await expect(moveOut(page)).toBeHidden();
+  });
+
+  test('climbs exactly one subgraph per press', async ({ page }) => {
+    await openEditor(
+      page,
+      `flowchart TD
+  subgraph outer["Outer"]
+    subgraph middle["Middle"]
+      subgraph inner["Inner"]
+        A["Deep"]
+        A2["Deep too"]
+      end
+    end
+  end
+  B["Loose"]
+  A --> B
+`
+    );
+    await selectNode(page, 'A');
+
+    await moveOut(page).click();
+    await expect.poll(async () => enclosingOf(await source(page), 'A')).toBe('middle');
+
+    await moveOut(page).click();
+    await expect.poll(async () => enclosingOf(await source(page), 'A')).toBe('outer');
+
+    await moveOut(page).click();
+    await expect.poll(async () => enclosingOf(await source(page), 'A')).toBeNull();
+    await expect(moveOut(page)).toBeHidden();
+
+    // The rest of the structure is untouched: every subgraph still there, nested as before.
+    const code = await source(page);
+    expect(enclosingOf(code, 'inner')).toBe('middle');
+    expect(enclosingOf(code, 'middle')).toBe('outer');
+    expect(enclosingOf(code, 'A2')).toBe('inner');
+    expect(code).toContain('A --> B');
+  });
+
+  test('steps a nested subgraph out along with its contents', async ({ page }) => {
+    await openEditor(
+      page,
+      `flowchart TD
+  subgraph outer["Outer"]
+    subgraph inner["Inner"]
+      A["Deep"]
+    end
+    C["Sibling"]
+  end
+`
+    );
+    await selectCluster(page, 'inner');
+    await moveOut(page).click();
+
+    await expect.poll(async () => enclosingOf(await source(page), 'inner')).toBeNull();
+    const code = await source(page);
+    expect(enclosingOf(code, 'A')).toBe('inner');
+    expect(enclosingOf(code, 'C')).toBe('outer');
+  });
+
+  test('is not offered for root elements or edges', async ({ page }) => {
+    await openEditor(page, DIAGRAM_WITH_SUBGRAPH);
+    await selectNode(page, 'D');
+    await expect(page.locator('#element-toolbar')).toBeVisible();
+    await expect(moveOut(page)).toBeHidden();
+
+    await selectCluster(page, 's1');
+    await expect(moveOut(page)).toBeHidden();
+
+    await selectNode(page, 'B');
+    await expect(moveOut(page)).toBeVisible();
+
+    const midpoint = await pointOnEdge(page, 'L_C_D_');
+    await page.mouse.click(midpoint.x, midpoint.y);
+    await expect(page.locator('#et-arrow-btn')).toBeVisible();
+    await expect(moveOut(page)).toBeHidden();
   });
 });

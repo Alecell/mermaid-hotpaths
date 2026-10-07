@@ -752,6 +752,20 @@
               <path d="M10 8 L15 12 L10 16" />
             </svg>
           </button>
+          <button id="et-move-out-btn" title="Move out one level" hidden>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3" y="4" width="9" height="16" rx="2" stroke-dasharray="3 2" />
+              <line x1="8" y1="12" x2="20" y2="12" />
+              <path d="M16 8 L21 12 L16 16" />
+            </svg>
+          </button>
           <button id="et-arrow-btn" title="Change arrow type" hidden>
             <svg
               viewBox="0 0 24 24"
@@ -1418,6 +1432,7 @@
       const etShapeBtn = document.getElementById('et-shape-btn');
       const etSubgraphBtn = document.getElementById('et-subgraph-btn');
       const etMoveBtn = document.getElementById('et-move-btn');
+      const etMoveOutBtn = document.getElementById('et-move-out-btn');
       const moveMenu = document.getElementById('move-menu');
       const etArrowBtn = document.getElementById('et-arrow-btn');
       const etCodeBtn = document.getElementById('et-code-btn');
@@ -1777,6 +1792,8 @@
         etSubgraphBtn.hidden = isCluster;
         // Both nodes and subgraphs can be re-parented.
         etMoveBtn.hidden = false;
+        // ...and stepped out, as long as there is something to step out of.
+        etMoveOutBtn.hidden = findEnclosingSubgraph(stripNotes(srcEl.value), nodeId) === null;
         etArrowBtn.hidden = true;
         etCodeBtn.hidden = false;
         const rect = el.getBoundingClientRect();
@@ -1792,6 +1809,7 @@
         etShapeBtn.hidden = true;
         etSubgraphBtn.hidden = true;
         etMoveBtn.hidden = true;
+        etMoveOutBtn.hidden = true;
         etArrowBtn.hidden = !entry?.arrowSpan;
         etCodeBtn.hidden = entry?.lineIndex == null;
         const { start, end } = edgeEndpointsOnScreen(pathEl);
@@ -1968,6 +1986,25 @@
         centerOnElement(id);
         selectNode(id);
         saveProject();
+      }
+
+      /**
+       * One level out: into the parent of the subgraph the selection sits in, or to the
+       * root when that subgraph is top-level. Deliberately a single hop rather than "out of
+       * everything" — on a deeply nested element each press is one visible step up, and
+       * stopping at the right depth is just a matter of stopping. (The move menu is there
+       * for jumping straight to any particular place.)
+       */
+      function moveSelectionOutOneLevel() {
+        if (!selection || selection.kind !== 'node') {
+          return;
+        }
+        const stripped = stripNotes(srcEl.value);
+        const parent = findEnclosingSubgraph(stripped, selection.id);
+        if (parent === null) {
+          return; // already at the root — the button isn't shown then, but be safe
+        }
+        moveElementInto(selection.id, findEnclosingSubgraph(stripped, parent));
       }
 
       /**
@@ -2695,6 +2732,11 @@
         } else {
           moveMenu.hidden = true;
         }
+      });
+
+      etMoveOutBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        moveSelectionOutOneLevel();
       });
 
       etArrowBtn.addEventListener('click', (e) => {
