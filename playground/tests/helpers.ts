@@ -56,6 +56,60 @@ export function source(page: Page): Promise<string> {
   return page.locator('#src').inputValue();
 }
 
+/**
+ * The on-screen point `fraction` of the way along the edge whose dom id contains `idPart`
+ * (e.g. `L_A_B_`), for clicking it — the midpoint by default, but a labelled edge has its
+ * label sitting right there, so aim off-center for those. Mapped through the path's *own*
+ * CTM rather than the svg's: an edge whose two ends share a subgraph is drawn inside that
+ * subgraph's own translated group.
+ */
+export async function pointOnEdge(
+  page: Page,
+  idPart: string,
+  fraction = 0.5
+): Promise<{ x: number; y: number }> {
+  return page.evaluate(
+    ({ part, at }) => {
+      const path = [...document.querySelectorAll('path.flowchart-link')].find((el) =>
+        el.id.includes(part)
+      ) as SVGPathElement | undefined;
+      if (!path) {
+        throw new Error(`no edge matching ${part}`);
+      }
+      const p = path.getPointAtLength(path.getTotalLength() * at);
+      const client = new DOMPoint(p.x, p.y).matrixTransform(path.getScreenCTM()!);
+      return { x: client.x, y: client.y };
+    },
+    { part: idPart, at: fraction }
+  );
+}
+
+/**
+ * How far (in screen px) the group mermaid drew this edge in sits from the svg root — zero
+ * for an edge at the root, and the whole point of a test about nested-edge overlays.
+ */
+export function groupOffsetOfEdge(page: Page, idPart: string): Promise<number> {
+  return page.evaluate((part) => {
+    const svg = document.querySelector('#diagram svg') as SVGSVGElement;
+    const path = [...document.querySelectorAll('path.flowchart-link')].find((el) =>
+      el.id.includes(part)
+    ) as SVGPathElement;
+    const s = svg.getScreenCTM()!;
+    const p = path.getScreenCTM()!;
+    return Math.hypot(p.e - s.e, p.f - s.f);
+  }, idPart);
+}
+
+/** Clicks a corner of the canvas that is empty whatever the diagram, to clear the selection. */
+export async function clickEmptyCanvas(page: Page): Promise<void> {
+  const view = await page.locator('#viewport').boundingBox();
+  if (!view) {
+    throw new Error('no viewport');
+  }
+  await page.mouse.click(view.x + 24, view.y + view.height - 24);
+  await expect(page.locator('#selection-layer rect, #selection-layer circle')).toHaveCount(0);
+}
+
 /** Clicks a node and waits until it's really the selection (toolbar up, ring drawn). */
 export async function selectNode(page: Page, id: string): Promise<void> {
   await node(page, id).click();

@@ -6,6 +6,7 @@ import {
   drag,
   node,
   openEditor,
+  pointOnEdge,
   selectCluster,
   selectNode,
   source,
@@ -70,6 +71,65 @@ test.describe('nesting by dragging', () => {
       .toContain('subgraph mover["Mover"]');
     // Its own member came along with it.
     expect(subgraphBody(await source(page), 'mover')).toContain('B["Inside mover"]');
+  });
+
+  test('dragging the "+" of a node inside a subgraph onto another subgraph links, never nests', async ({
+    page,
+  }) => {
+    await openEditor(
+      page,
+      `flowchart TD
+  subgraph login["Login"]
+    apple["Apple"]
+    email["Email"]
+  end
+  subgraph email_page["Email page"]
+    forgot["Forgot"]
+  end
+`
+    );
+    await selectNode(page, 'email');
+    // The "+" hangs just under its node — over its own group's background. A press there
+    // used to double as "start dragging the group", so the drop nested all of `login`
+    // inside `email_page` on top of drawing the edge.
+    await drag(
+      page,
+      await centerOf(page.locator('#selection-layer g')),
+      await titleStripOf(cluster(page, 'email_page'))
+    );
+
+    await expect.poll(() => source(page)).toContain('email --> email_page');
+    const code = await source(page);
+    expect(subgraphBody(code, 'email_page')).not.toContain('subgraph login["Login"]');
+    expect(subgraphBody(code, 'login')).toEqual(['apple["Apple"]', 'email["Email"]']);
+  });
+
+  test('dragging an edge handle onto a node inside a subgraph relinks, never nests', async ({
+    page,
+  }) => {
+    const midpoint = await pointOnEdge(page, 'L_A_B_');
+    await page.mouse.click(midpoint.x, midpoint.y);
+    const handles = page.locator('#selection-layer circle');
+    await expect(handles).toHaveCount(2);
+
+    // The start handle sits on A's own outline; pressing it used to also pick A up.
+    const startHandle = (await page.evaluate(() => {
+      const circles = [...document.querySelectorAll('#selection-layer circle')];
+      const a = document.querySelector('#diagram svg g.node[id*="-flowchart-A-"]')!.getBoundingClientRect();
+      const dist = (c: Element) => {
+        const b = c.getBoundingClientRect();
+        return Math.hypot(b.x + b.width / 2 - (a.x + a.width / 2), b.y + b.height / 2 - (a.y + a.height / 2));
+      };
+      return circles.map(dist).indexOf(Math.min(...circles.map(dist)));
+    })) as number;
+    await drag(page, await centerOf(handles.nth(startHandle)), await centerOf(node(page, 'C')));
+
+    await expect.poll(() => source(page)).toContain('C --> B');
+    const code = await source(page);
+    expect(code).not.toContain('A --> B');
+    // A is still a root node, not a new member of s1.
+    expect(subgraphBody(code, 's1')).not.toContain('A["Start"]');
+    expect(code).toContain('A["Start"]');
   });
 
   test('a drag that lands on empty canvas changes nothing', async ({ page }) => {

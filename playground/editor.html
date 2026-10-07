@@ -1687,6 +1687,74 @@
         return { x: p.x, y: p.y };
       }
 
+      /*
+       * An edge's geometry is local to the group mermaid drew it in, and that is not always
+       * the svg root: an edge whose two ends share a subgraph is drawn inside that subgraph's
+       * own `g.root`, which carries a `translate(…)` of its own (nested subgraphs stack them).
+       * A path's `d` and `getPointAtLength` know nothing of that, while every overlay this
+       * file draws lives at the svg root — so anything read off an edge goes through one of
+       * the helpers below first. They work from the element's real CTM, so any depth of
+       * nesting, and any layout engine, comes out right.
+       */
+
+      /** The matrix taking `el`'s own local space to the svg root's user space. */
+      function localToSvgMatrix(el) {
+        return el.ownerSVGElement.getScreenCTM().inverse().multiply(el.getScreenCTM());
+      }
+
+      /** A DOMMatrix as a `transform` attribute value. */
+      function matrixAttr(m) {
+        return `matrix(${m.a} ${m.b} ${m.c} ${m.d} ${m.e} ${m.f})`;
+      }
+
+      /** The point `length` along `pathEl`, in the svg root's user space. */
+      function edgePointInSvgSpace(pathEl, length) {
+        const local = pathEl.getPointAtLength(length);
+        const p = new DOMPoint(local.x, local.y).matrixTransform(localToSvgMatrix(pathEl));
+        return { x: p.x, y: p.y };
+      }
+
+      /** The point `length` along `pathEl`, in client (screen) space. */
+      function edgePointToClient(pathEl, length) {
+        const local = pathEl.getPointAtLength(length);
+        const p = new DOMPoint(local.x, local.y).matrixTransform(pathEl.getScreenCTM());
+        return { x: p.x, y: p.y };
+      }
+
+      /**
+       * Where an edge's two true ends sit on screen: the very start of its first segment and
+       * the very end of its last. A normal edge is its own single segment; a self-loop has
+       * several (see edgeSegmentGroup).
+       */
+      function edgeEndpointsOnScreen(pathEl) {
+        const segments = edgeSegmentGroup(pathEl);
+        const first = segments[0];
+        const last = segments[segments.length - 1];
+        return {
+          start: edgePointToClient(first, 0),
+          end: edgePointToClient(last, last.getTotalLength()),
+        };
+      }
+
+      /**
+       * Re-appends `el` as the svg's last child, so it paints over everything else, without
+       * moving it on screen: its own `transform` only places it within the group mermaid drew
+       * it in, so that group's placement has to ride along — on a wrapper, since the element
+       * itself is mermaid's to position. Idempotent: an element raised before simply has its
+       * wrapper re-raised.
+       */
+      function raiseToSvgRoot(el) {
+        const svg = el.ownerSVGElement;
+        let wrapper = el.parentElement;
+        if (!wrapper.classList.contains('raised-to-root')) {
+          wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          wrapper.classList.add('raised-to-root');
+          wrapper.setAttribute('transform', matrixAttr(localToSvgMatrix(el.parentElement)));
+          wrapper.appendChild(el);
+        }
+        svg.appendChild(wrapper);
+      }
+
       function hideElementToolbar() {
         elementToolbar.hidden = true;
         arrowPopover.hidden = true;
@@ -1726,15 +1794,8 @@
         etMoveBtn.hidden = true;
         etArrowBtn.hidden = !entry?.arrowSpan;
         etCodeBtn.hidden = entry?.lineIndex == null;
-        const segments = edgeSegmentGroup(pathEl);
-        const firstSeg = segments[0];
-        const lastSeg = segments[segments.length - 1];
-        const startSvg = firstSeg.getPointAtLength(0);
-        const endSvg = lastSeg.getPointAtLength(lastSeg.getTotalLength());
-        positionElementToolbarForEdge(
-          svgPointToClient(currentSvg, startSvg.x, startSvg.y),
-          svgPointToClient(currentSvg, endSvg.x, endSvg.y)
-        );
+        const { start, end } = edgeEndpointsOnScreen(pathEl);
+        positionElementToolbarForEdge(start, end);
       }
 
       /** Keeps the toolbar (and any open popover it spawned) glued to the selection while panning/zooming. */
@@ -1754,15 +1815,8 @@
         } else if (selection.kind === 'edge') {
           const pathEl = currentSvg.querySelector(`[id="${CSS.escape(selection.domId)}"]`);
           if (pathEl) {
-            const segments = edgeSegmentGroup(pathEl);
-            const firstSeg = segments[0];
-            const lastSeg = segments[segments.length - 1];
-            const startSvg = firstSeg.getPointAtLength(0);
-            const endSvg = lastSeg.getPointAtLength(lastSeg.getTotalLength());
-            positionElementToolbarForEdge(
-              svgPointToClient(currentSvg, startSvg.x, startSvg.y),
-              svgPointToClient(currentSvg, endSvg.x, endSvg.y)
-            );
+            const { start, end } = edgeEndpointsOnScreen(pathEl);
+            positionElementToolbarForEdge(start, end);
           }
         }
         if (!shapePopover.hidden && shapePopoverMode === 'change') {
@@ -2168,8 +2222,7 @@
           // can't be trusted either way. Fall back to the edge's own midpoint.
           const segments = edgeSegmentGroup(pathEl);
           const mid = segments[Math.floor(segments.length / 2)];
-          const pt = mid.getPointAtLength(mid.getTotalLength() / 2);
-          const client = svgPointToClient(currentSvg, pt.x, pt.y);
+          const client = edgePointToClient(mid, mid.getTotalLength() / 2);
           return { x: client.x, y: client.y, width: 0, height: 0 };
         }
 
@@ -2583,7 +2636,7 @@
               if (!pathEl) {
                 continue;
               }
-              point = pathEl.getPointAtLength(pathEl.getTotalLength() / 2);
+              point = edgePointInSvgSpace(pathEl, pathEl.getTotalLength() / 2);
             }
           } else {
             const el = findElementForId(svg, id);
@@ -2864,7 +2917,9 @@
 
         for (const seg of segments) {
           const highlight = document.createElementNS(ns, 'path');
+          // The real path's own geometry, so it needs the real path's own placement too.
           highlight.setAttribute('d', seg.getAttribute('d'));
+          highlight.setAttribute('transform', matrixAttr(localToSvgMatrix(seg)));
           highlight.setAttribute('fill', 'none');
           highlight.setAttribute('stroke', SELECT_COLOR);
           highlight.setAttribute('stroke-linecap', 'round');
@@ -2884,7 +2939,7 @@
               ?.closest('.edgeLabel')
           : null;
         if (labelGroup) {
-          currentSvg.appendChild(labelGroup);
+          raiseToSvgRoot(labelGroup);
         }
         raiseNoteBadges();
 
@@ -2896,8 +2951,8 @@
         // itself, since segments here is [pathEl].
         const firstSeg = segments[0];
         const lastSeg = segments[segments.length - 1];
-        addHandle(layer, firstSeg.getPointAtLength(0), 'start', entry);
-        addHandle(layer, lastSeg.getPointAtLength(lastSeg.getTotalLength()), 'end', entry);
+        addHandle(layer, edgePointInSvgSpace(firstSeg, 0), 'start', entry);
+        addHandle(layer, edgePointInSvgSpace(lastSeg, lastSeg.getTotalLength()), 'end', entry);
       }
 
       function selectNode(nodeId) {
@@ -3017,7 +3072,7 @@
 
         let hoverTarget = null;
 
-        // fixedPoint (x1/y1) is in the svg's own user-space (from pathEl.getPointAtLength),
+        // fixedPoint (x1/y1) is in the svg's own user-space (from edgePointInSvgSpace),
         // so x2/y2 must be too — panzoom.clientToContent only undoes the pan/zoom CSS
         // transform, not the svg's own viewBox-to-rendered-size scale, which is a different
         // factor whenever the svg's rendered size doesn't happen to equal its viewBox 1:1.
@@ -3419,6 +3474,13 @@
         'pointerdown',
         (e) => {
           if (e.button !== 0) {
+            return;
+          }
+          // A press on the selection overlay (the "+", an edge's drag handles) is that
+          // overlay's own gesture, not a press on whatever sits under it — and a node's
+          // "+" hangs right over its own group's background. This runs in the capture
+          // phase, before the overlay's own listener, so its stopPropagation can't tell us.
+          if (e.target.closest?.('#selection-layer')) {
             return;
           }
           // Resolved by point rather than by e.target: an edge's invisible click target is
