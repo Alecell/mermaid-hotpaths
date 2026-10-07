@@ -183,3 +183,58 @@ test.describe('turning a node into a subgraph', () => {
     await expect(page.locator('#et-shape-btn')).toBeHidden();
   });
 });
+
+test.describe('the "new node inside" button on a subgraph', () => {
+  test.beforeEach(async ({ page }) => {
+    await openEditor(page, DIAGRAM_WITH_SUBGRAPH);
+  });
+
+  test('creates a plain node inside the selected subgraph, with no edge', async ({ page }) => {
+    await selectCluster(page, 's1');
+    await page.locator('#et-new-btn').click();
+
+    // Straight to the id prompt — no node-or-subgraph menu, no shape picker.
+    await expect(page.locator('#modal-backdrop')).toBeVisible();
+    await expect(page.locator('#modal-title')).toHaveText('New node inside');
+    await page.locator('#modal-id').fill('fresh');
+    await page.locator('#modal-confirm').click();
+    await expect(page.locator('#modal-backdrop')).toBeHidden();
+
+    const code = await source(page);
+    expect(subgraphBody(code, 's1')).toContain('fresh["Node"]');
+    // Filling a group is not the same as pointing the group at something.
+    expect(code).not.toMatch(/fresh\s*-->|-->\s*fresh/);
+    // The newborn is what's selected now, ready to be reshaped.
+    await expect(node(page, 'fresh')).toBeVisible();
+    await expect(page.locator('#et-shape-btn')).toBeVisible();
+  });
+
+  test('fills a nested subgraph itself, not its parent', async ({ page }) => {
+    await openEditor(
+      page,
+      `flowchart TD
+  subgraph outer["Outer"]
+    subgraph inner["Inner"]
+      A["Deep"]
+    end
+  end
+`
+    );
+    await selectCluster(page, 'inner');
+    await page.locator('#et-new-btn').click();
+    await page.locator('#modal-id').fill('deeper');
+    await page.locator('#modal-confirm').click();
+    await expect(page.locator('#modal-backdrop')).toBeHidden();
+
+    expect(subgraphBody(await source(page), 'inner')).toContain('deeper["Node"]');
+  });
+
+  test('is offered for subgraphs only', async ({ page }) => {
+    await selectNode(page, 'A');
+    await expect(page.locator('#element-toolbar')).toBeVisible();
+    await expect(page.locator('#et-new-btn')).toBeHidden();
+
+    await selectCluster(page, 's1');
+    await expect(page.locator('#et-new-btn')).toBeVisible();
+  });
+});

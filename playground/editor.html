@@ -726,6 +726,20 @@
           <button id="zoom-in" title="Zoom in">+</button>
         </div>
         <div class="element-toolbar" id="element-toolbar" hidden>
+          <button id="et-new-btn" title="New node inside" hidden>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3.5" y="3.5" width="17" height="17" rx="2" />
+              <line x1="12" y1="8" x2="12" y2="16" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+            </svg>
+          </button>
           <button id="et-shape-btn" title="Change shape">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
               <rect x="3" y="11" width="10" height="10" />
@@ -1429,6 +1443,7 @@
 
       // --- Element toolbar (change shape / change arrow type / view in code) ---
       const elementToolbar = document.getElementById('element-toolbar');
+      const etNewBtn = document.getElementById('et-new-btn');
       const etShapeBtn = document.getElementById('et-shape-btn');
       const etSubgraphBtn = document.getElementById('et-subgraph-btn');
       const etMoveBtn = document.getElementById('et-move-btn');
@@ -1788,6 +1803,8 @@
         // Subgraphs only ever render as a plain bracketed box — there's no alternate
         // shape to switch between, and nothing to promote them into, unlike a node.
         const isCluster = el.classList.contains('cluster');
+        // A subgraph's own first action is filling it.
+        etNewBtn.hidden = !isCluster;
         etShapeBtn.hidden = isCluster;
         etSubgraphBtn.hidden = isCluster;
         // Both nodes and subgraphs can be re-parented.
@@ -1806,6 +1823,7 @@
           return;
         }
         const entry = currentEdgeIndex.get(domId);
+        etNewBtn.hidden = true;
         etShapeBtn.hidden = true;
         etSubgraphBtn.hidden = true;
         etMoveBtn.hidden = true;
@@ -2718,6 +2736,24 @@
         document.body.appendChild(shapePopover);
         shapePopover.style.position = 'fixed';
         openFloatingPopover(shapePopover, etShapeBtn);
+      });
+
+      // A plain rectangle, named in the usual modal, born inside the selected subgraph — the
+      // same thing the subgraph's own "+" offers, one click shorter and without the menu, for
+      // the common case. Its shape is a detail to change afterwards from the node's toolbar.
+      etNewBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!selection || selection.kind !== 'node') {
+          return;
+        }
+        openModal({
+          kind: 'node',
+          shape: SHAPES[0],
+          label: 'Node',
+          title: 'New node inside',
+          insideOf: selection.id,
+          inside: true,
+        });
       });
 
       etSubgraphBtn.addEventListener('click', (e) => {
