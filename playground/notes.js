@@ -13,6 +13,8 @@
  * multi-line note still round-trips as a single physical source line.
  */
 
+import { escapeRegExp } from './shapes.js';
+
 const NOTES_HEADER = '%% ---- Notes (managed by the Notes panel) ----';
 const NOTE_LINE_RE = /^%% @note:(node|edge|subgraph) ([A-Za-z][\w-]*) (.*)$/;
 
@@ -82,6 +84,30 @@ export function setNote(source, kind, id, text) {
     notes.delete(key);
   }
   return rewriteNotesBlock(source, notes);
+}
+
+/**
+ * Follows an element's rename into the notes: the note pinned to `oldId` (a node's or a
+ * subgraph's — an edge's own id is a different namespace) is re-keyed to `newId`, and
+ * every `@oldId` reference in any note's text now reads `@newId`. Unchanged notes leave
+ * the source untouched.
+ */
+export function renameNoteId(source, oldId, newId) {
+  const notes = parseNotes(source);
+  if (notes.size === 0) {
+    return source;
+  }
+  const refRe = new RegExp(`@${escapeRegExp(oldId)}(?![\\w-])`, 'g');
+  const renamed = new Map();
+  let changed = false;
+  for (const [key, text] of notes) {
+    const [kind, id] = key.split(':');
+    const newKey = kind !== 'edge' && id === oldId ? `${kind}:${newId}` : key;
+    const newText = text.replace(refRe, `@${newId}`);
+    changed ||= newKey !== key || newText !== text;
+    renamed.set(newKey, newText);
+  }
+  return changed ? rewriteNotesBlock(source, renamed) : source;
 }
 
 /** Removes the note for `kind`:`id`, if any. No-op if it doesn't have one. */

@@ -780,6 +780,19 @@
               <path d="M16 8 L21 12 L16 16" />
             </svg>
           </button>
+          <button id="et-rename-btn" title="Rename ID">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z" />
+              <circle cx="7.5" cy="7.5" r="1.5" />
+            </svg>
+          </button>
           <button id="et-arrow-btn" title="Change arrow type" hidden>
             <svg
               viewBox="0 0 24 24"
@@ -862,7 +875,7 @@
     <div class="modal-backdrop" id="modal-backdrop" hidden>
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <h2 id="modal-title">New node</h2>
-        <label for="modal-id">ID (optional)</label>
+        <label for="modal-id" id="modal-id-label">ID (optional)</label>
         <input id="modal-id" spellcheck="false" placeholder="auto-generated if left blank" />
         <div class="modal-error" id="modal-error" hidden></div>
         <div class="modal-actions">
@@ -917,6 +930,7 @@
         appendToDiagram,
         noteTextToHtml,
       } from './notes.js';
+      import { renameId } from './rename.js';
       import { highlightMermaid } from './highlight.js';
       import { getProject, updateProject } from './projectStore.js';
 
@@ -1200,6 +1214,7 @@
       const subgraphBtn = document.getElementById('subgraph-btn');
       const modalBackdrop = document.getElementById('modal-backdrop');
       const modalTitle = document.getElementById('modal-title');
+      const modalIdLabel = document.getElementById('modal-id-label');
       const modalIdInput = document.getElementById('modal-id');
       const modalError = document.getElementById('modal-error');
       const modalCancel = document.getElementById('modal-cancel');
@@ -1267,12 +1282,21 @@
       let pending = null;
       function openModal(p) {
         pending = p;
+        const renaming = p.kind === 'rename';
         modalTitle.textContent =
           p.title ?? (p.kind === 'subgraph' ? 'New Subgraph' : `New ${p.shape.label}`);
-        modalIdInput.value = '';
+        // The same prompt serves creating (where a blank id means "pick one for me") and
+        // renaming (where the current id is the starting point and blank is a mistake).
+        modalIdLabel.textContent = renaming ? 'ID' : 'ID (optional)';
+        modalIdInput.placeholder = renaming ? '' : 'auto-generated if left blank';
+        modalConfirm.textContent = renaming ? 'Rename' : 'Create';
+        modalIdInput.value = renaming ? p.id : '';
         modalError.hidden = true;
         modalBackdrop.hidden = false;
         modalIdInput.focus();
+        if (renaming) {
+          modalIdInput.select();
+        }
       }
       function closeModal() {
         modalBackdrop.hidden = true;
@@ -1386,6 +1410,10 @@
         const stripped = stripNotes(srcEl.value);
         const existingIds = extractExistingIds(stripped);
         const raw = modalIdInput.value.trim();
+        if (pending.kind === 'rename') {
+          await confirmRename(pending.id, raw, existingIds);
+          return;
+        }
         let newId;
         if (!raw) {
           newId = nextAutoId(existingIds, pending.kind === 'subgraph' ? 's' : 'n');
@@ -1441,6 +1469,39 @@
         saveProject();
       }
 
+      /**
+       * Renames the selected element's id across the whole source (see rename.js) and
+       * re-selects it under its new name. Leaving the id as it was is simply a dismissal.
+       */
+      async function confirmRename(oldId, newId, existingIds) {
+        if (newId === oldId) {
+          closeModal();
+          return;
+        }
+        if (!newId) {
+          modalError.textContent = 'An ID is required.';
+          modalError.hidden = false;
+          return;
+        }
+        if (!isValidId(newId)) {
+          modalError.textContent = 'Invalid ID — start with a letter, then letters/numbers/_/-.';
+          modalError.hidden = false;
+          return;
+        }
+        if (existingIds.has(newId)) {
+          modalError.textContent = `"${newId}" is already used in this diagram.`;
+          modalError.hidden = false;
+          return;
+        }
+        beginEdit();
+        srcEl.value = renameId(srcEl.value, oldId, newId);
+        closeModal();
+        clearTimeout(debounceID);
+        await renderDiagram();
+        selectNode(newId);
+        saveProject();
+      }
+
       // --- Element toolbar (change shape / change arrow type / view in code) ---
       const elementToolbar = document.getElementById('element-toolbar');
       const etNewBtn = document.getElementById('et-new-btn');
@@ -1448,6 +1509,7 @@
       const etSubgraphBtn = document.getElementById('et-subgraph-btn');
       const etMoveBtn = document.getElementById('et-move-btn');
       const etMoveOutBtn = document.getElementById('et-move-out-btn');
+      const etRenameBtn = document.getElementById('et-rename-btn');
       const moveMenu = document.getElementById('move-menu');
       const etArrowBtn = document.getElementById('et-arrow-btn');
       const etCodeBtn = document.getElementById('et-code-btn');
@@ -1811,6 +1873,7 @@
         etMoveBtn.hidden = false;
         // ...and stepped out, as long as there is something to step out of.
         etMoveOutBtn.hidden = findEnclosingSubgraph(stripNotes(srcEl.value), nodeId) === null;
+        etRenameBtn.hidden = false;
         etArrowBtn.hidden = true;
         etCodeBtn.hidden = false;
         const rect = el.getBoundingClientRect();
@@ -1828,6 +1891,7 @@
         etSubgraphBtn.hidden = true;
         etMoveBtn.hidden = true;
         etMoveOutBtn.hidden = true;
+        etRenameBtn.hidden = true;
         etArrowBtn.hidden = !entry?.arrowSpan;
         etCodeBtn.hidden = entry?.lineIndex == null;
         const { start, end } = edgeEndpointsOnScreen(pathEl);
@@ -2773,6 +2837,14 @@
       etMoveOutBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         moveSelectionOutOneLevel();
+      });
+
+      etRenameBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!selection || selection.kind !== 'node') {
+          return;
+        }
+        openModal({ kind: 'rename', id: selection.id, title: 'Rename ID' });
       });
 
       etArrowBtn.addEventListener('click', (e) => {
